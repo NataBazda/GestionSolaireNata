@@ -490,7 +490,7 @@ function rafraichirDepuisThingSpeak() {
 
             // Cumulus cuisine : déduit de field7 > 2050 W
       // (les deux cumulus tournent alors simultanément — cas du mode HC)
-      var cuisineOn = pBallon > 2050;
+	  var cuisineOn = (pBallon > 2050) || (pBallon > 900 && pBallon < 980);
       setText("CEcuis", cuisineOn ? "En chauffe" : "Arrêt");
       setText("val1", cuisineOn ? "En chauffe" : "Arrêt");
       var elCC = document.getElementById("CEcuisine");
