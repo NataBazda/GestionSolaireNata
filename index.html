@@ -8,14 +8,16 @@
   <meta http-equiv='refresh' content='1800'>
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://thingspeak.com">
-  <title>Gestion solaire Nata (NAS)</title>
+  <title>Gestion solaire Nata (GitHub)</title>
   <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
   <script type="text/javascript">
     // ============ Constantes ============
     var CHANNEL_ID = "1922173";
-    var TS_LAST  = "https://api.thingspeak.com/channels/" + CHANNEL_ID + "/feeds/last.json";
-    var TS_HISTO = "https://api.thingspeak.com/channels/" + CHANNEL_ID + "/feeds.json?results=200";
-    // Si votre canal est privé, ajoutez "&api_key=VOTRE_CLE_READ" à la fin des 2 URLs ci-dessus.
+    var TS_KEY = "";   // Si votre canal est privé : mettez ici votre clé de LECTURE (Read API Key)
+    function tsUrl(chemin, params) { return "https://api.thingspeak.com/channels/" + CHANNEL_ID + chemin + "?" + params + (TS_KEY ? "&api_key=" + TS_KEY : ""); }
+    var TS_LAST  = tsUrl("/feeds/last.json", "results=1");
+    var TS_HISTO = tsUrl("/feeds.json", "results=300");                      // consommation : ~100 min (un point toutes les 20 s)
+    var TS_TEMP  = tsUrl("/feeds.json", "days=2&average=60&round=1");        // températures : moyenne horaire sur 2 jours (envoyées 1 fois par heure seulement)
 
     // Tarifs par défaut (Bleu) — ajustés si la couleur Tempo est récupérée
     var TarifHC = 0.132;
@@ -114,7 +116,7 @@
 
    function drawChart2() {
      data_Graphique = google.visualization.arrayToDataTable([[{label:'heure',type:'timeofday'},{label:'Conso réseau',type:'number'},{label:'Conso totale',type:'number'},{label:'Solaire',type:'number'}]]);
-     data_Graphique_Temp = google.visualization.arrayToDataTable([['Heure','Température extérieure','Température Piscine']]);
+     data_Graphique_Temp = google.visualization.arrayToDataTable([[{label:'Heure',type:'string'},{label:'Température extérieure',type:'number'},{label:'Température Piscine',type:'number'}]]);
      options_Graphique = {
        chartArea: {width: '80%'},
        title: 'Consommation',
@@ -428,10 +430,10 @@ function rafraichirDepuisThingSpeak() {
           yellowFrom: 0, yellowTo: pTot, greenFrom: pTot, greenTo: 5000,
           majorTicks: ['0','1000','2000','3000','4000','5000'], minorTicks: 10, max: 5000, min: 0 };
 
-        dataPuissance.setValue(0, 1, pReseau);  chartPuissance.draw(dataPuissance, optionsPuissance);
-        dataPuissanceS.setValue(0, 1, pSol);    chartPuissanceS.draw(dataPuissanceS, optionsPuissanceS);
-        dataPuissanceT.setValue(0, 1, pTot);    chartPuissanceT.draw(dataPuissanceT, optionsPuissanceT);
-        dataPuissanceB.setValue(0, 1, 0);       chartPuissanceB.draw(dataPuissanceB, optionsPuissanceB);
+        dataPuissance.setValue(0, 1, Math.round(pReseau));  formatPuissance.format(dataPuissance, 1);  chartPuissance.draw(dataPuissance, optionsPuissance);
+        dataPuissanceS.setValue(0, 1, Math.round(pSol));    formatPuissance.format(dataPuissanceS, 1);  chartPuissanceS.draw(dataPuissanceS, optionsPuissanceS);
+        dataPuissanceT.setValue(0, 1, Math.round(pTot));    formatPuissance.format(dataPuissanceT, 1);  chartPuissanceT.draw(dataPuissanceT, optionsPuissanceT);
+        dataPuissanceB.setValue(0, 1, 0);       formatPuissance.format(dataPuissanceB, 1);  chartPuissanceB.draw(dataPuissanceB, optionsPuissanceB);
       }
 
       // ---- Bar chart ----
@@ -479,16 +481,24 @@ function rafraichirDepuisThingSpeak() {
 
       // Chauffage salon : actif si field4 > 50 W
       var chaufOn = pChauf > 50;
-      setText("val5", chaufOn ? "ON" : "OFF");
-      setText("Salon", chaufOn ? "ON" : "OFF");
+      setText("val5", chaufOn ? "En chauffe" : "Arrêt");
+      setText("Salon", chaufOn ? "En chauffe" : "Arrêt");
       var elSc = document.getElementById("SalonC");
       if (elSc) elSc.style.setProperty('--text-color', chaufOn ? "green" : "red");
       var elSc2 = document.getElementById("SalonC2");
       if (elSc2) elSc2.style.setProperty('--text-color', chaufOn ? "green" : "red");
 
+            // Cumulus cuisine : déduit de field7 > 2050 W
+      // (les deux cumulus tournent alors simultanément — cas du mode HC)
+      var cuisineOn = pBallon > 2050;
+      setText("CEcuis", cuisineOn ? "En chauffe" : "Arrêt");
+      setText("val1", cuisineOn ? "En chauffe" : "Arrêt");
+      var elCC = document.getElementById("CEcuisine");
+      if (elCC) elCC.style.setProperty('--text-color', cuisineOn ? "green" : "red");
+      var elCC2 = document.getElementById("CEcuisine2");
+      if (elCC2) elCC2.style.setProperty('--text-color', cuisineOn ? "green" : "red");
+
       // Les autres états ne sont pas disponibles via ThingSpeak
-      setText("CEcuis", "—");
-      setText("val1", "—");
       setText("Pompe", "—");
       setText("val3", "—");
       setText("PAC1pisc", "—");
@@ -506,51 +516,56 @@ function rafraichirDepuisThingSpeak() {
 }
 
 // ============ Historique des graphiques (une seule fois au chargement) ============
+function messageGraph(id, txt) {   // affiche la raison au lieu d'un cadre vide
+  var el = document.getElementById(id);
+  if (el) el.innerHTML = '<p style="text-align:center;padding:40px 10px;opacity:.7">' + txt + '</p>';
+}
+function chargerFeeds(url) {
+  return fetch(url, { cache: 'no-store' })
+    .then(function (r) { if (!r.ok) throw new Error("ThingSpeak HTTP " + r.status + " (canal privé ? mettez TS_KEY)"); return r.json(); })
+    .then(function (j) { if (!j || !j.feeds) throw new Error("réponse ThingSpeak inattendue"); return j.feeds; });
+}
 function chargerHistorique() {
-  fetch(TS_HISTO, { cache: 'no-store' })
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
-      if (!data.feeds || !chartsPrets) return;
-      // ---- Graphique Consommation ----
-      data_Graphique = google.visualization.arrayToDataTable([[
-        {label:'heure',type:'timeofday'},
-        {label:'Conso réseau',type:'number'},
-        {label:'Conso totale',type:'number'},
-        {label:'Solaire',type:'number'}
-      ]]);
-      // ---- Graphique Températures ----
-      data_Graphique_Temp = google.visualization.arrayToDataTable([['Heure','Température extérieure','Température Piscine']]);
+  // ---- Graphique Consommation (points de 20 s) ----
+  chargerFeeds(TS_HISTO).then(function (feeds) {
+    data_Graphique = google.visualization.arrayToDataTable([[
+      {label:'heure',type:'timeofday'}, {label:'Conso réseau',type:'number'}, {label:'Conso totale',type:'number'}, {label:'Solaire',type:'number'}
+    ]]);
+    var n = 0;
+    feeds.forEach(function (f) {
+      var d = new Date(f.created_at);
+      if (isNaN(d.getTime()) || (f.field5 == null && f.field6 == null)) return;
+      var pSol = parseFloat(f.field5) || 0, pTot = parseFloat(f.field6) || 0;
+      data_Graphique.addRow([[d.getHours(), d.getMinutes(), d.getSeconds()], Math.round(pTot - pSol), Math.round(pTot), Math.round(pSol)]);
+      n++;
+    });
+    if (!n) throw new Error("aucune mesure reçue");
+    chart_Graphique.draw(data_Graphique, options_Graphique);
+  }).catch(function (e) { console.warn("Historique consommation KO :", e); messageGraph("curve_chart", "Consommation : " + e.message); });
 
-      data.feeds.forEach(function (f) {
-        var d = new Date(f.created_at);
-        if (isNaN(d.getTime())) return;
-        var hms = [d.getHours(), d.getMinutes(), d.getSeconds()];
-        var pSol = parseFloat(f.field5) || 0;
-        var pTot = parseFloat(f.field6) || 0;
-        var pRes = pTot - pSol;
-        if (pSol === 0 && pTot === 0) return; // ignorer les points vides
-        data_Graphique.addRow([hms, pRes, pTot, pSol]);
-
-        var tExt = parseFloat(f.field1);
-        var tPis = parseFloat(f.field2);
-        if (!isNaN(tExt) || !isNaN(tPis)) {
-          var hhmm = ("0"+d.getHours()).slice(-2) + ":" + ("0"+d.getMinutes()).slice(-2);
-          data_Graphique_Temp.addRow([hhmm, isNaN(tExt) ? null : tExt, isNaN(tPis) ? null : tPis]);
-        }
-      });
-
-      chart_Graphique.draw(data_Graphique, options_Graphique);
-      chart_Graphique_Temp.draw(data_Graphique_Temp, options_Graphique_Temp);
-    })
-    .catch(function (e) { console.warn("Historique KO :", e); });
+  // ---- Graphique Températures (moyenne par heure : ces champs ne sont écrits qu'une fois par heure) ----
+  chargerFeeds(TS_TEMP).then(function (feeds) {
+    data_Graphique_Temp = google.visualization.arrayToDataTable([[{label:'Heure',type:'string'},{label:'Température extérieure',type:'number'},{label:'Température Piscine',type:'number'}]]);
+    var n = 0;
+    feeds.forEach(function (f) {
+      var d = new Date(f.created_at);
+      var tExt = parseFloat(f.field1), tPis = parseFloat(f.field2);
+      if (isNaN(d.getTime()) || (isNaN(tExt) && isNaN(tPis))) return;
+      var lib = d.getDate() + "/" + (d.getMonth() + 1) + " " + ("0" + d.getHours()).slice(-2) + "h";
+      data_Graphique_Temp.addRow([lib, isNaN(tExt) ? null : tExt, isNaN(tPis) ? null : tPis]);
+      n++;
+    });
+    if (!n) throw new Error("pas encore de mesure (envoyée toutes les heures)");
+    chart_Graphique_Temp.draw(data_Graphique_Temp, options_Graphique_Temp);
+  }).catch(function (e) { console.warn("Historique températures KO :", e); messageGraph("curve_chart_Temp", "Températures : " + e.message); });
 }
 
 // Attendre que les charts soient prêts puis charger
 var intervalHisto = setInterval(function () {
-  if (chartsPrets) { clearInterval(intervalHisto); chargerHistorique(); }
+  if (chartsPrets) { clearInterval(intervalHisto); rafraichirDepuisThingSpeak(); chargerHistorique(); }
 }, 200);
 
-// Lancer immédiatement puis toutes les 30 s
+// Lancer immédiatement puis toutes les 20 s
 rafraichirDepuisThingSpeak();
 setInterval(rafraichirDepuisThingSpeak, 20000);
 
@@ -598,7 +613,7 @@ function startTime() {
   var m = checkTime(today.getMinutes());
   s = checkTime(s);
   var mois = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
-  document.getElementById('time').innerHTML = "Gestion solaire Nata (NAS) le " + d + " " + mois[today.getMonth()] + " à " + h + ":" + m + ":" + s;
+  document.getElementById('time').innerHTML = "Gestion solaire Nata (GitHub) le " + d + " " + mois[today.getMonth()] + " à " + h + ":" + m + ":" + s;
   setTimeout(startTime, 1000);
 }
 function checkTime(i) { if (i < 10) i = "0" + i; return i; }
