@@ -471,7 +471,7 @@ function rafraichirDepuisThingSpeak() {
 
       // ---- État dynamique déduit des puissances ----
       // Cumulus SdB : actif si field7 > 100 W
-      var cumulusOn = pBallon > 100;
+      var cumulusOn = (pBallon > 100 && pBallon < 900) || pBallon > 1000;
       setText("ILed2", cumulusOn ? "En chauffe" : "Arrêt");
       setText("ILed",  cumulusOn ? "En chauffe" : "Arrêt");
       var elCS = document.getElementById("CEsdb");
