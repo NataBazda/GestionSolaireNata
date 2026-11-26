@@ -366,8 +366,8 @@ function rafraichir() {
       setText("hResSub", pRes > 0 ? "soutirage depuis le réseau" : "injection / aucun soutirage");
       setCls("tRes", "t " + (pRes > 0 ? "bad" : "good"));
       // États déduits des puissances (même logique que l'ancienne page GitHub)
-      var cumulusOn = (pBal > 100 && pBal < 900) || pBal > 1000;
-      var cuisineOn = (pBal > 2050) || (pBal > 900 && pBal < 980);
+      var cumulusOn = (pBal > 100 && pBal < 800) || pBal > 1100;
+      var cuisineOn = (pBal > 2050) || (pBal > 900 && pBal < 1100);
       var chaufOn = pCh > 50;
       setText("hBalSub", (cumulusOn || cuisineOn) ? "en chauffe" : "arrêt");
       setCls("tBal", "t " + ((cumulusOn || cuisineOn) ? "good" : ""));
