@@ -1,623 +1,576 @@
-<!DOCTYPE HTML>
+<!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="color-scheme" content="light dark">
-  <meta name="theme-color" content="#2563eb">
-  <meta http-equiv='refresh' content='1800'>
-  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
-  <link rel="preconnect" href="https://thingspeak.com">
-  <title>Gestion solaire Nata (GitHub)</title>
-  <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
-  <script type="text/javascript">
-    // ============ Constantes ============
-    var CHANNEL_ID = "1922173";
-    var TS_KEY = "";   // Si votre canal est privé : mettez ici votre clé de LECTURE (Read API Key)
-    function tsUrl(chemin, params) { return "https://api.thingspeak.com/channels/" + CHANNEL_ID + chemin + "?" + params + (TS_KEY ? "&api_key=" + TS_KEY : ""); }
-    var TS_LAST  = tsUrl("/feeds/last.json", "results=1");
-    var TS_HISTO = tsUrl("/feeds.json", "results=300");                      // consommation : ~100 min (un point toutes les 20 s)
-    var TS_TEMP  = tsUrl("/feeds.json", "days=2&average=60&round=1");        // températures : moyenne horaire sur 2 jours (envoyées 1 fois par heure seulement)
-
-    // Tarifs par défaut (Bleu) — ajustés si la couleur Tempo est récupérée
-    var TarifHC = 0.132;
-    var TarifHP = 0.1752;
-
-    var chartsPrets = false;
-    var animationGauges = 400;
-    function calcTj() { var w = window.innerWidth; return w < 640 ? Math.max(120, Math.floor((w - 48) / 2)) : 200; }
-    var tj = calcTj();
-    var dataBarreCourante;
-    function lancer(f) { try { f(); } catch (e) { console.log(e); } }
-
-    // ---- Détection mode sombre
-    var mqSombre = window.matchMedia('(prefers-color-scheme: dark)');
-    function estSombre() { return mqSombre.matches; }
-    function coulTexte() { return estSombre() ? '#e2e8f0' : '#0f172a'; }
-    function coulGrille() { return estSombre() ? '#334155' : '#e2e8f0'; }
-
-    function appliqueThemeGraph(o) {
-      if (!o) return o;
-      var tc = coulTexte(), gc = coulGrille();
-      if (o.title) { o.titleTextStyle = o.titleTextStyle || {}; o.titleTextStyle.color = tc; }
-      if (o.legend) { o.legend.textStyle = o.legend.textStyle || {}; o.legend.textStyle.color = tc; }
-      ['hAxis','vAxis'].forEach(function (ax) {
-        if (!o[ax]) return;
-        o[ax].textStyle = o[ax].textStyle || {}; o[ax].textStyle.color = tc;
-        o[ax].titleTextStyle = o[ax].titleTextStyle || {}; o[ax].titleTextStyle.color = tc;
-        o[ax].gridlines = o[ax].gridlines || {}; o[ax].gridlines.color = gc;
-      });
-      if (o.annotations && o.annotations.textStyle) o.annotations.textStyle.color = tc;
-      return o;
-    }
-
-    google.charts.load('current', {'packages':['gauge','corechart']});
-    google.charts.setOnLoadCallback(function () {
-      lancer(drawChart1); lancer(drawChart2); lancer(drawChart3);
-      chartsPrets = true;
-      var cb = function () { appliqueThemeEtRedessine(); };
-      if (mqSombre.addEventListener) mqSombre.addEventListener('change', cb);
-      else if (mqSombre.addListener) mqSombre.addListener(cb);
-    });
-
-    function appliqueThemeEtRedessine() {
-      if (!chartsPrets) return;
-      appliqueThemeGraph(options_Graphique);
-      appliqueThemeGraph(options_Graphique_Temp);
-      appliqueThemeGraph(optionsBarre);
-      lancer(function () { chart_Graphique.draw(data_Graphique, options_Graphique); });
-      lancer(function () { chart_Graphique_Temp.draw(data_Graphique_Temp, options_Graphique_Temp); });
-      lancer(function () { if (dataBarreCourante) chartBarre.draw(dataBarreCourante, optionsBarre); });
-    }
-
-    var rz;
-    window.addEventListener('resize', function () {
-      clearTimeout(rz);
-      rz = setTimeout(function () {
-        if (!chartsPrets) return;
-        var anc = tj; tj = calcTj();
-        if (tj != anc) {
-          var g = [[chartPuissance, dataPuissance, optionsPuissance], [chartPuissanceS, dataPuissanceS, optionsPuissanceS], [chartPuissanceT, dataPuissanceT, optionsPuissanceT], [chartPuissanceB, dataPuissanceB, optionsPuissanceB]];
-          for (var i = 0; i < g.length; i++) { g[i][2].width = tj; g[i][2].height = tj; lancer(function (x) { return function () { x[0].draw(x[1], x[2]); }; }(g[i])); }
-        }
-        lancer(function () { chart_Graphique.draw(data_Graphique, options_Graphique); });
-        lancer(function () { chart_Graphique_Temp.draw(data_Graphique_Temp, options_Graphique_Temp); });
-        lancer(function () { if (dataBarreCourante) chartBarre.draw(dataBarreCourante, optionsBarre); });
-      }, 250);
-    });
-
-    function drawChart1() {
-       dataPuissance  = google.visualization.arrayToDataTable([['Label', 'Value'], ['Puissance', 0]]);
-       dataPuissanceS = google.visualization.arrayToDataTable([['Label', 'Value'], ['Solaire', 0]]);
-       dataPuissanceT = google.visualization.arrayToDataTable([['Label', 'Value'], ['Totale', 0]]);
-       dataPuissanceB = google.visualization.arrayToDataTable([['Label', 'Value'], ['Batterie', 0]]);
-
-       optionsPuissance  = { width: tj, height: tj, animation:{duration:animationGauges,easing:'inAndOut'}, redFrom: 1000, redTo: 3000, yellowFrom: 0, yellowTo: 1000, greenFrom: -3000, greenTo: 0, majorTicks: ['-3000','-2000','-1000','0','1000','2000','3000'], minorTicks: 10, max: 3000, min: -3000 };
-       optionsPuissanceS = { width: tj, height: tj, animation:{duration:animationGauges,easing:'inAndOut'}, yellowFrom: 0, yellowTo: 3000, greenFrom: 3000, greenTo: 5000, majorTicks: ['0','1000','2000','3000','4000','5000'], minorTicks: 10, max: 5000, min: 0 };
-       optionsPuissanceT = { width: tj, height: tj, animation:{duration:animationGauges,easing:'inAndOut'}, redFrom: 5500, redTo: 6000, yellowFrom: 3000, yellowTo: 5500, greenFrom: 0, greenTo: 3000, majorTicks: ['0','1000','2000','3000','4000','5000','6000'], minorTicks: 10, max: 6000, min: 0 };
-       optionsPuissanceB = { width: tj, height: tj, animation:{duration:animationGauges,easing:'inAndOut'}, yellowFrom: -3000, yellowTo: 0, greenFrom: 0, greenTo: 3000, majorTicks: ['-3000','-2000','-1000','0','1000','2000','3000'], minorTicks: 10, max: 3000, min: -3000 };
-
-       formatPuissance = new google.visualization.NumberFormat({ suffix: " W", fractionDigits: 0 });
-       formatPuissance.format(dataPuissance, 1);
-       formatPuissance.format(dataPuissanceS, 1);
-       formatPuissance.format(dataPuissanceT, 1);
-       formatPuissance.format(dataPuissanceB, 1);
-
-       chartPuissance  = new google.visualization.Gauge(document.getElementById("chart_Puissance"));
-       chartPuissanceS = new google.visualization.Gauge(document.getElementById("chart_PuissanceS"));
-       chartPuissanceT = new google.visualization.Gauge(document.getElementById("chart_PuissanceT"));
-       chartPuissanceB = new google.visualization.Gauge(document.getElementById("chart_PuissanceB"));
-
-       chartPuissance.draw(dataPuissance, optionsPuissance);
-       chartPuissanceS.draw(dataPuissanceS, optionsPuissanceS);
-       chartPuissanceT.draw(dataPuissanceT, optionsPuissanceT);
-       chartPuissanceB.draw(dataPuissanceB, optionsPuissanceB);
-   }
-
-   function drawChart2() {
-     data_Graphique = google.visualization.arrayToDataTable([[{label:'heure',type:'timeofday'},{label:'Conso réseau',type:'number'},{label:'Conso totale',type:'number'},{label:'Solaire',type:'number'}]]);
-     data_Graphique_Temp = google.visualization.arrayToDataTable([[{label:'Heure',type:'string'},{label:'Température extérieure',type:'number'},{label:'Température Piscine',type:'number'}]]);
-     options_Graphique = {
-       chartArea: {width: '80%'},
-       title: 'Consommation',
-       hAxis: {title: 'Heure'},
-       vAxis: {title: 'Watt', minValue: 0},
-       colors: ['#0000FF','#FF0000','#FFFF00'],
-       curveType: 'function',
-       legend: { position: 'top' },
-       backgroundColor:'none'
-     };
-     options_Graphique_Temp = {
-       chartArea: {width: '90%'},
-       title: 'Températures',
-       hAxis: {title: 'Heure'},
-       vAxis: {title: 'Température'},
-       colors: ['#FF0000','#0000FF'],
-       curveType: 'function',
-       legend: { position: 'top' },
-       backgroundColor:'none'
-     };
-     appliqueThemeGraph(options_Graphique);
-     appliqueThemeGraph(options_Graphique_Temp);
-     chart_Graphique = new google.visualization.LineChart(document.getElementById('curve_chart'));
-     chart_Graphique_Temp = new google.visualization.LineChart(document.getElementById('curve_chart_Temp'));
-     chart_Graphique.draw(data_Graphique, options_Graphique);
-     chart_Graphique_Temp.draw(data_Graphique_Temp, options_Graphique_Temp);
-   }
-
-   function drawChart3() {
-     var dataBarre = google.visualization.arrayToDataTable([
-       ["Mesure", "Puissance", { role: 'style' }, { role: 'annotation' }],
-       ["Photovoltaique", 0, 'stroke-color: #FFFFFF;stroke-width: 2;fill-opacity: 0.7; color: gold; height:20px',"0 w" ],
-       ["Conso totale", 0,'stroke-color: #FFFFFF;stroke-width: 2;fill-opacity: 0.7; color: red; height:20',"0 w" ],
-       ["Conso réseau", 0,'stroke-color: #FFFFFF;stroke-width: 2;fill-opacity: 0.7; color: red',"0 w" ],
-       ["Conso ballon", 0,'stroke-color: #FFFFFF;stroke-width: 2;fill-opacity: 0.7; color: red',"0 w" ],
-       ["Conso chauffage", 0,'stroke-color: #FFFFFF;stroke-width: 2;fill-opacity: 0.7; color: red',"0 w" ],
-       ["Batterie", 0,'stroke-color: #FFFFFF;stroke-width: 2;fill-opacity: 0.7; color: green',"0 w" ]
-     ]);
-     optionsBarre = {
-       bar: {groupWidth: "50%"},
-       title: 'Puissances instantanées',
-       chartArea: {left: (window.innerWidth < 640 ? 100 : 140), width: (window.innerWidth < 640 ? '55%' : '70%')},
-       hAxis: {title: 'Watt', maxValue:2000, minValue:-500},
-       vAxis: { textStyle: { color: cssVar('--texte') } },
-       legend: { position: "none" },
-       backgroundColor:'none',
-       annotations: {textStyle: {
-         fontName: 'Arial',
-         fontSize: (window.innerWidth < 640 ? 13 : 18),
-         bold: true
-       }}
-     };
-     appliqueThemeGraph(optionsBarre);
-     chartBarre = new google.visualization.BarChart(document.getElementById("barchart_values"));
-     dataBarreCourante = dataBarre; chartBarre.draw(dataBarre, optionsBarre);
-   }
-  </script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#1e3a8a">
+<meta http-equiv="refresh" content="1800">
+<link rel="preconnect" href="https://api.thingspeak.com">
+<title>Gestion solaire Nata (GitHub)</title>
 <style>
-:root{--c:#fff;--tx:#0f172a;--mu:#64748b;--ac:#2563eb;--bd:#e2e8f0;--bg:#f1f5f9}
-*{box-sizing:border-box}html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
-body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--tx);background:var(--bg);line-height:1.4;padding-bottom:76px}
-.entete{background:linear-gradient(120deg,#1e3a8a,#2563eb 60%,#06b6d4);color:#fff;padding:14px 16px;text-align:center}
-.entete h1{margin:0;font-size:clamp(1rem,3.8vw,1.3rem);font-weight:600}
-.nav{position:fixed;bottom:0;left:0;right:0;z-index:9;display:flex;flex-wrap:wrap;justify-content:space-around;background:rgba(255,255,255,.95);border-top:1px solid var(--bd);padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px))}
-.nav a{flex:1;text-align:center;text-decoration:none;color:var(--mu);font-weight:600;font-size:.9rem;padding:8px 4px;border-radius:10px}
-.nav a:active{background:#e0e7ff;color:var(--ac)}
-.haut{position:sticky;top:0;z-index:9}
-.pw{display:flex;flex-wrap:wrap;justify-content:center;gap:2px 18px;font-weight:700;font-size:1.05rem;margin-top:6px}
-.page{max-width:1100px;margin:0 auto;padding:14px 12px;display:grid;gap:14px}
-section[id]{scroll-margin-top:96px;display:grid;gap:14px}
-h2{margin:6px 4px 0;font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--mu)}
-.carte{background:var(--c);border-radius:18px;box-shadow:0 1px 3px rgba(15,23,42,.08),0 8px 24px rgba(15,23,42,.05);padding:14px;border:0;margin:0;min-width:0}
-.jauges{display:flex;flex-wrap:wrap;justify-content:center}
-.grille{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
-.tuile{background:var(--bg);border-radius:12px;padding:10px 12px;font-weight:600;display:flex;flex-wrap:wrap;gap:2px 10px;align-items:center;min-width:0}
-.etat{background:#fff;border:1px solid var(--bd);color:var(--tx)}
-.etat::before{content:"";width:12px;height:12px;border-radius:50%;background:var(--text-color,#2563eb);flex:none;box-shadow:0 0 0 4px color-mix(in srgb,var(--text-color,#2563eb) 18%,transparent)}
-.etat>span{color:var(--tx)}
-progress{width:100%;height:16px;accent-color:var(--ac)}
-.graph{width:100%;height:380px}.graph.haut{height:420px}
-fieldset.carte>legend{font-weight:700;font-size:1.05rem;padding:0 8px;color:var(--text-color,inherit)}
-form.page{padding:0}
-fieldset.sous{border:1px solid var(--bd);border-radius:14px;margin:10px 0 0;padding:6px 12px 12px;min-width:0}
-fieldset.sous>legend{font-weight:600;padding:0 6px;color:var(--text-color,var(--ac))}
-.slider-temp{margin-top:10px;padding:8px 4px}
-.slider-temp label{display:block;margin-bottom:6px;font-size:.92rem;font-weight:600;color:var(--mu)}
-.slider-temp label b{color:var(--ac);font-size:1.15rem}
-.slider-temp input[type=range]{width:100%;accent-color:var(--ac);height:26px}
-@media (prefers-color-scheme: dark){
-  .slider-temp input[type=range]{accent-color:#60a5fa}
-}
-.choix{position:relative;display:flex;flex-wrap:wrap;gap:6px;background:var(--bg);padding:4px;border-radius:999px}
-.choix input{position:absolute;opacity:0;pointer-events:none}
-.choix label{flex:1 1 auto;text-align:center;padding:9px 12px;border-radius:999px;cursor:pointer;font-size:.92rem;font-weight:600;color:var(--mu);user-select:none;-webkit-tap-highlight-color:transparent}
-.choix input:checked+label{background:var(--ac);color:#fff;box-shadow:0 2px 6px rgba(37,99,235,.35)}
-.actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;align-items:center}
-button{font:inherit;font-weight:600;min-height:44px;padding:10px 16px;border-radius:12px;border:1px solid var(--bd);background:#fff;color:var(--tx);cursor:pointer}
-a{color:var(--ac)}.lien{text-align:center;margin:0 0 10px}
-.pastille{display:inline-block;width:14px;height:14px;border-radius:50%;border:1px solid #475569;vertical-align:-2px;margin-right:6px}
-.thingspeak{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
-iframe.ts{width:100%;max-width:450px;height:260px;border:1px solid var(--bd);border-radius:14px;background:#fff}
-@media(min-width:900px){.nav{position:static;bottom:auto;border:0;border-bottom:1px solid var(--bd);justify-content:center;gap:8px;padding:6px}.nav a{flex:none;padding:8px 22px}body{padding-bottom:0}}
-@media(max-width:640px){.page{padding:10px 8px;gap:10px}.carte{padding:10px;border-radius:14px}.grille{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}.tuile{font-size:.9rem}.graph{height:300px}.graph.haut{height:340px}}
-.thermos{display:flex;flex-wrap:wrap;justify-content:center;gap:16px 40px}
-.thermo{display:flex;flex-direction:column;align-items:center;width:120px;--p:0;--col:#2563eb}
-.thermo .val{font-size:1.6rem;font-weight:700;color:var(--col);margin:2px 0 8px;transition:color .8s}
-.tube{position:relative;width:28px;height:170px;border:3px solid #cbd5e1;border-bottom:0;border-radius:14px 14px 0 0;background:repeating-linear-gradient(to top,#e2e8f0 0 1px,#f8fafc 1px 17px)}
+:root{--c:#fff;--tx:#0f172a;--mu:#64748b;--ac:#2563eb;--bd:#e2e8f0;--bg:#f1f5f9;--ok:#16a34a;--ko:#dc2626;--sol:#f59e0b;--bau:#2563eb;--bma:#16a34a;--bar:#dc2626;--bhc:#7c3aed;--tau:#2563eb;--tma:#15803d;--tar:#dc2626;--thc:#7c3aed}
+@media (prefers-color-scheme:dark){:root{--c:#1e293b;--tx:#e2e8f0;--mu:#94a3b8;--ac:#3b82f6;--bd:#334155;--bg:#0f172a;--ok:#4ade80;--ko:#f87171;--tau:#60a5fa;--tma:#4ade80;--tar:#f87171;--thc:#a78bfa}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none !important}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--tx);line-height:1.35;padding-bottom:calc(70px + env(safe-area-inset-bottom,0px))}
+.top{position:sticky;top:0;z-index:20;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:calc(8px + env(safe-area-inset-top,0px)) 14px 8px;background:linear-gradient(120deg,#1e3a8a,#2563eb 70%,#06b6d4);color:#fff}
+.top b{font-size:1.05rem}.top #time{font-size:.85rem;opacity:.9;margin-left:6px}
+.topr{display:flex;align-items:center;gap:10px}
+.dot{width:10px;height:10px;border-radius:50%;background:#4ade80;box-shadow:0 0 0 3px rgba(74,222,128,.3)}
+.dot.hors{background:#f87171;box-shadow:0 0 0 3px rgba(248,113,113,.35)}
+#bell{position:relative;background:rgba(255,255,255,.18);border:0;color:#fff;border-radius:12px;min-height:36px;min-width:40px;padding:4px 8px;font-size:1.05rem}
+#nbAl{position:absolute;top:-5px;right:-5px;background:#dc2626;color:#fff;border-radius:999px;font:700 .7rem system-ui;padding:1px 6px;font-style:normal}
+main{max-width:720px;margin:0 auto;padding:10px 10px 0}
+section{display:grid;gap:10px}
+.carte{background:var(--c);border-radius:16px;padding:12px;box-shadow:0 1px 3px rgba(15,23,42,.08)}
+h2{margin:4px 4px 0;font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--mu)}
+.ban{background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:14px;padding:10px 12px;font-weight:600;font-size:.9rem}
+@media (prefers-color-scheme:dark){.ban{background:#450a0a;color:#fecaca;border-color:#7f1d1d}}
+/* Accueil */
+.hero{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.t{background:var(--c);border-radius:16px;padding:10px 12px;box-shadow:0 1px 3px rgba(15,23,42,.08);position:relative;overflow:hidden;--k:var(--ac)}
+.t small{display:block;color:var(--mu);font-weight:600;font-size:.78rem}
+.t b{display:block;font-size:1.65rem;font-weight:800;color:var(--k);letter-spacing:-.02em;line-height:1.15}
+.t em{display:block;font-style:normal;font-size:.75rem;color:var(--mu);min-height:1em}
+.t.sol{--k:var(--sol)}.t.good{--k:var(--ok)}.t.bad{--k:var(--ko)}
+.sp{width:100%;height:24px;display:block;margin-top:4px;color:var(--k);opacity:.85}
+.couv{display:grid;gap:5px}
+.couv>div:first-child{display:flex;justify-content:space-between;font-size:.85rem;font-weight:600}
+.bar{height:12px;border-radius:99px;background:var(--bg);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--ok);border-radius:99px;transition:width .6s}
+.bar.cu i{background:#0ea5e9}
+.sub{font-size:.8rem;color:var(--mu);display:flex;flex-wrap:wrap;gap:2px 14px}
+.chips{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.chip{border:1px solid var(--bd);border-radius:14px;padding:8px 6px;text-align:center;background:var(--c);cursor:pointer;--k:var(--mu);min-width:0}
+.chip .l{display:block;font-size:.74rem;font-weight:600;color:var(--mu);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip b{display:block;font-size:1.05rem;color:var(--k)}
+.chip small{display:block;font-size:.68rem;color:var(--mu);min-height:1em}
+.chip.on{--k:var(--ok);border-color:var(--ok);background:color-mix(in srgb,var(--ok) 10%,var(--c))}
+.thermos{display:flex;justify-content:space-around;gap:6px}
+.thermo{display:flex;flex-direction:column;align-items:center;width:31%;max-width:120px;--p:0;--col:#2563eb;--mn:0;--mx:0}
+.thermo>b{font-size:.82rem}
+.thermo .val{font-size:1.4rem;font-weight:700;color:var(--col);margin:2px 0 6px;transition:color .8s}
+.tube{position:relative;width:26px;height:120px;border:3px solid #cbd5e1;border-bottom:0;border-radius:13px 13px 0 0;background:repeating-linear-gradient(to top,#e2e8f0 0 1px,#f8fafc 1px 12px)}
 .merc{position:absolute;left:4px;right:4px;bottom:0;height:calc(var(--p)*1%);background:var(--col);border-radius:8px 8px 0 0;transition:height .8s,background .8s}
-.bulbe{width:54px;height:54px;border-radius:50%;background:var(--col);border:3px solid #cbd5e1;margin-top:-6px;position:relative;z-index:1;transition:background .8s}
-.thermo small{color:var(--mu);margin-top:6px;text-align:center;font-size:.8rem;line-height:1.5}
-.thermo{--mn:0;--mx:0}
-.rep{position:absolute;left:-10px;right:-10px;height:0;border-top:3px solid;z-index:2;transition:bottom .8s}
+.bulbe{width:46px;height:46px;border-radius:50%;background:var(--col);border:3px solid #cbd5e1;margin-top:-6px;position:relative;z-index:1;transition:background .8s}
+.thermo small{color:var(--mu);margin-top:5px;text-align:center;font-size:.74rem;line-height:1.5}
+.rep{position:absolute;left:-9px;right:-9px;height:0;border-top:3px solid;z-index:2;transition:bottom .8s}
 .rep.mx{bottom:calc(var(--mx)*1%);border-color:var(--cmx,#dc2626)}
 .rep.mn{bottom:calc(var(--mn)*1%);border-color:var(--cmn,#2563eb)}
-#etatConnexion{position:fixed;top:0;left:0;right:0;z-index:100;padding:6px;text-align:center;font-size:.85rem;font-weight:600;background:#dc2626;color:#fff;transform:translateY(-100%);transition:transform .3s}
-#etatConnexion.hors{transform:translateY(0)}
-.nas-readonly .choix input,
-.nas-readonly .choix label,
-.nas-readonly .slider-temp input,
-.nas-readonly .actions button {
-  pointer-events: none;
-  opacity: .55;
-}
-@media (prefers-color-scheme: dark){
-  :root{--c:#1e293b;--tx:#e2e8f0;--mu:#94a3b8;--ac:#3b82f6;--bd:#334155;--bg:#0f172a}
-  body{background:var(--bg)}
-  .nav{background:rgba(30,41,59,.95)}
-  .etat{background:#1e293b}
-  .tuile{background:#0f172a}
-  .choix{background:#0f172a}
-  button{background:#334155}
-  .nav a:active{background:#1e3a8a;color:#bfdbfe}
-  iframe.ts{background:#1e293b}
-  .tube{background:repeating-linear-gradient(to top,#334155 0 1px,#1e293b 1px 17px)}
-  .bulbe{border-color:#475569}
-}
-@media (prefers-reduced-motion: reduce){
-  *,*::before,*::after{animation-duration:.01ms !important;transition-duration:.01ms !important}
-}
+@media (prefers-color-scheme:dark){.tube{background:repeating-linear-gradient(to top,#334155 0 1px,#1e293b 1px 12px)}.bulbe{border-color:#475569}}
+.niv{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.niv label{display:flex;justify-content:space-between;font-size:.82rem;font-weight:600;margin-bottom:4px}
+.niv a{color:inherit;text-decoration:none}
+progress{width:100%;height:12px;accent-color:var(--ac)}
+.lignes{display:grid;gap:6px;font-size:.9rem}
+.lignes div{display:flex;justify-content:space-between;gap:10px}
+.lignes span:last-child{font-weight:700;text-align:right}
+.pastille{display:inline-block;width:13px;height:13px;border-radius:50%;border:1px solid #475569;vertical-align:-2px;margin-right:5px}
+.tempo{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.9rem;font-weight:600}
+.bars{display:grid;gap:7px;--z:20%}
+.bars h3{margin:0 0 2px;font-size:.95rem;text-align:center}
+.br{display:grid;grid-template-columns:92px 1fr;gap:8px;align-items:center}
+.bl{font-size:.8rem;font-weight:600;text-align:right;line-height:1.1}
+.bt{position:relative;height:24px}
+.bt::before{content:"";position:absolute;left:var(--z);top:-2px;bottom:-2px;border-left:1px solid var(--mu);opacity:.6}
+.bb{position:absolute;top:2px;bottom:2px;left:0;width:0;border-radius:3px;opacity:.75;background:#dc2626;transition:left .5s,width .5s,background .5s}
+.bv{position:absolute;top:0;line-height:24px;font:700 .85rem system-ui,sans-serif;font-style:normal;white-space:nowrap;transition:left .5s;color:var(--tx)}
+.bt.ax{height:16px}.bt.ax::before{display:none}
+.bt.ax span{position:absolute;top:0;transform:translateX(-50%);font-size:.68rem;color:var(--mu)}
+/* Commandes */
+.dev{border-top:1px solid var(--bd);padding-top:10px;margin-top:10px}
+.dev:first-of-type{border:0;margin:0;padding:0}
+.dh{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font-weight:700}
+.pill{font-size:.78rem;font-weight:700;border-radius:99px;padding:2px 10px;background:var(--bg);color:var(--mu)}
+.pill.ok{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.pill.bad{background:color-mix(in srgb,var(--ko) 18%,transparent);color:var(--ko)}
+.choix{position:relative;display:flex;gap:4px;background:var(--bg);padding:4px;border-radius:14px}
+.choix input{position:absolute;opacity:0;pointer-events:none}
+.choix label{flex:1 1 0;text-align:center;padding:11px 4px;border-radius:11px;cursor:pointer;font-size:.88rem;font-weight:700;color:var(--mu);user-select:none}
+.choix input[value=au]+label{color:var(--tau)}
+.choix input[value=ma]+label{color:var(--tma)}
+.choix input[value=ar]+label{color:var(--tar)}
+.choix input[value=hc]+label{color:var(--thc)}
+.choix input:checked+label{color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.28)}
+.choix input[value=au]:checked+label{background:var(--bau)}
+.choix input[value=ma]:checked+label{background:var(--bma)}
+.choix input[value=ar]:checked+label{background:var(--bar)}
+.choix input[value=hc]:checked+label{background:var(--bhc)}
+.choix input:focus-visible+label{outline:3px solid #93c5fd}
+.slider label{display:block;margin:10px 0 4px;font-size:.9rem;font-weight:600;color:var(--mu)}
+.slider label b{color:var(--ac);font-size:1.1rem}
+.slider input{width:100%;accent-color:var(--ac);height:28px}
+button,.btn{font:inherit;font-weight:700;min-height:46px;padding:10px 14px;border-radius:12px;border:1px solid var(--bd);background:var(--c);color:var(--tx);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+button:active{transform:scale(.97)}
+.prim{background:var(--ac);color:#fff;border-color:var(--ac)}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.actions .full{grid-column:1/-1}
+.liens{display:flex;flex-wrap:wrap;gap:6px 18px;justify-content:center;font-size:.88rem}
+a{color:var(--ac)}
+/* Historique */
+.graph{width:100%;height:300px}
+.ts{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+iframe.ts1{width:100%;max-width:450px;height:250px;border:1px solid var(--bd);border-radius:14px;background:#fff}
+.rec{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.rec b{display:block;font-size:1.15rem}.rec small{color:var(--mu);font-size:.72rem}
+/* Alertes */
+.al{display:grid;grid-template-columns:auto 1fr auto;gap:8px 10px;align-items:center;padding:10px 0;border-top:1px solid var(--bd)}
+.al:first-of-type{border:0}
+.al .n{font-weight:600;font-size:.9rem}
+.al .v{grid-column:2/4;display:flex;gap:8px;align-items:center;justify-content:flex-end}
+.al input[type=number]{width:84px;min-height:40px;font:inherit;font-weight:700;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);padding:4px 8px;text-align:right}
+.al input[type=checkbox]{width:24px;height:24px;accent-color:var(--ac)}
+.note{font-size:.78rem;color:var(--mu)}
+/* Barre d'onglets */
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(3,1fr);background:var(--c);border-top:1px solid var(--bd);padding:4px 4px calc(4px + env(safe-area-inset-bottom,0px))}
+.nav button{min-height:54px;border:0;background:none;border-radius:12px;color:var(--mu);font-size:.72rem;display:flex;flex-direction:column;gap:2px;padding:4px}
+.nav button span{font-size:1.35rem;line-height:1}
+.nav button.on{color:var(--ac);background:color-mix(in srgb,var(--ac) 12%,transparent)}
+@media(min-width:900px){body{padding-bottom:0}.nav{position:static;max-width:720px;margin:10px auto 0;border:1px solid var(--bd);border-radius:14px}}
+@media (prefers-reduced-motion:reduce){*{transition-duration:.01ms !important}}
 </style>
 </head>
+<body>
+<header class="top">
+  <div><b>☀️ Nata</b><span id="time"></span></div>
+  <div class="topr"><span id="dotCo" class="dot" title="Connexion ThingSpeak"></span>
+  <button id="bell" type="button" onclick="go('alertes')" aria-label="Alertes">🔔<i id="nbAl" hidden>0</i></button></div>
+</header>
 
-<body class="nas-readonly">
-<div id="etatConnexion" role="status" aria-live="polite">⚠️ Connexion à ThingSpeak perdue…</div>
-<div class="haut"><header class="entete"><h1 id="time"></h1><div class="pw"><span>☀️ <b id="navSol">-- W</b></span><span>⚡ <b id="navTot">-- W</b></span><span>🔋 <b id="navBat">-- W</b></span></div></header>
-<nav class="nav"><a href="#vue">📊 Vue</a><a href="#cmd">🎛️ Commandes</a><a href="#graph">📈 Graphiques</a></nav></div>
-<main class="page">
-<section id="vue">
-<h2>🌡️ Températures</h2>
-<div class="carte thermos">
-<div class="thermo" id="thermoExt"><b>🌤️ Extérieur</b><span class="val" id="valExt">--</span><div class="tube"><div class="merc"></div><i class="rep mx"></i><i class="rep mn"></i></div><div class="bulbe"></div><small id="mmExt">&nbsp;</small></div>
-<div class="thermo" id="thermoPiscine"><b>🏊 Piscine</b><span class="val" id="valPiscine">--</span><div class="tube"><div class="merc"></div><i class="rep mx"></i><i class="rep mn"></i></div><div class="bulbe"></div><small id="mmPiscine">&nbsp;</small></div>
-<div class="thermo" id="thermoBallon"><b>🚿 Cumulus</b><span class="val" id="valBallon">--</span><div class="tube"><div class="merc"></div><i class="rep mx"></i><i class="rep mn"></i></div><div class="bulbe"></div><small id="mmBallon">&nbsp;</small></div>
-</div>
-<h2>⚡ Puissances</h2>
-<div class="carte jauges">
-<div id="chart_PuissanceT"></div><div id="chart_PuissanceS"></div><div id="chart_Puissance"></div><div id="chart_PuissanceB"></div>
-</div>
-<h2>🔌 État des équipements</h2>
-<div class="carte grille">
-<div class="tuile etat" id="CEsdb2"><span>🚿 Cumulus SdB: <span id="ILed2">--</span></span></div>
-<div class="tuile etat" id="CEcuisine2"><span>🍳 Cumulus cuisine : <span id="CEcuis">--</span></span></div>
-<div class="tuile etat" id="piscine2"><span>🌊 Pompe piscine : <span id="Pompe">--</span></span></div>
-<div class="tuile etat" id="PAC12"><span>♨️ Chauffage piscine : <span id="PAC1pisc">--</span></span></div>
-<div class="tuile etat" id="SalonC"><span>🛋️ Chauffage salon : <span id="Salon">--</span></span></div>
-<div class="tuile etat" id="CoulCourrier"><span>📬 <span id="Courrier">—</span></span></div>
-<div class="tuile etat"><label>🔋 Batterie : <span id="battPct">?</span> %</label><progress id="battBar" max="100" value="0"></progress></div>
-<div class="tuile etat"><label>💧 <a href="http://192.168.1.21/" target="_blank" rel="noopener">Cuve : <span id="cuvePct">?</span> %</a></label><progress id="cuveBar" max="100" value="0"></progress></div>
-</div>
-</div>
-<h2>💰 Énergie et coût du jour</h2>
-<div class="carte grille">
-<div class="tuile"><span>🔌 <span id="kWhTotalVal">0 kWh total</span></span> <span id="PrixTotalVal">0 € total </span></div>
-<div class="tuile"><span>☀️ <span id="kWhSolaireVal">kWh solaire </span></span> <span id="PrixSolaireVal">€ solaire </span></div>
-<div class="tuile"><span>⚡ <span id="kWhDiffVal">kWh réseau</span></span> <span id="PrixDiffVal">€ réseau</span></div>
-<div class="tuile"><span>🌙 <span id="kWhDiffHCVal">—</span></span> <span id="PrixDiffHCVal">—</span></div>
-<div class="tuile"><span>⏱️ <span id="PrixparheureVal">0 € / heure </span></span></div>
-</div>
-<h2>🔵⚪🔴 Tempo</h2>
-<div class="carte grille">
-<div class="tuile"><span class="pastille" id="pastilleAuj" style="background:#94a3b8"></span><span>📅 Aujourd'hui : <span id="tempoAuj">—</span></span></div>
-<div class="tuile"><span class="pastille" id="pastilleDem" style="background:#94a3b8"></span><span>📅 Demain : <span id="tempoDem">—</span></span></div>
-<div class="tuile" style="color:#b91c1c"><span>🔴 Reste <span id="rougeRestant">?</span> rouges</span></div>
-</div>
+<main>
+<!-- ===================== ACCUEIL ===================== -->
+<section id="accueil">
+  <div id="banAl" class="ban" hidden onclick="go('alertes')"></div>
+
+  <div class="hero">
+    <div class="t sol"><small>☀️ Solaire</small><b id="hSol">-- W</b><em>production</em>
+      <svg class="sp" viewBox="0 0 100 24" preserveAspectRatio="none"><polyline id="spSol" fill="none" stroke="currentColor" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg></div>
+    <div class="t"><small>🏠 Maison</small><b id="hTot">-- W</b><em>consommation totale</em>
+      <svg class="sp" viewBox="0 0 100 24" preserveAspectRatio="none"><polyline id="spTot" fill="none" stroke="currentColor" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg></div>
+    <div class="t" id="tRes"><small>⚡ Réseau</small><b id="hRes">-- W</b><em id="hResSub">&nbsp;</em>
+      <svg class="sp" viewBox="0 0 100 24" preserveAspectRatio="none"><polyline id="spRes" fill="none" stroke="currentColor" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg></div>
+    <div class="t" id="tBal"><small>🚿 Cumulus</small><b id="hBal">-- W</b><em id="hBalSub">&nbsp;</em>
+      <svg class="sp" viewBox="0 0 100 24" preserveAspectRatio="none"><polyline id="spBal" fill="none" stroke="currentColor" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg></div>
+  </div>
+
+  <div class="carte couv">
+    <div><span>☀️ Couverture solaire de la maison</span><b id="cvPct">--</b></div>
+    <div class="bar cu"><i id="cvBar"></i></div>
+    <div class="sub"><span>🚿 Chauffe-eau : <b id="wBal">--</b></span><span>♨️ Chauffage : <b id="wCh">--</b></span><span>⏱️ <b id="PrixparheureVal">--</b></span></div>
+  </div>
+
+  <h2>🔌 Équipements <span style="text-transform:none;letter-spacing:0">(déduits des puissances)</span></h2>
+  <div class="chips">
+    <div class="chip" id="c_sdb"><span class="l">🚿 Cumulus SdB</span><b id="s_sdb">--</b></div>
+    <div class="chip" id="c_cuis"><span class="l">🍳 Cumulus cuis.</span><b id="s_cuis">--</b></div>
+    <div class="chip" id="c_salon"><span class="l">🛋️ Chauf. salon</span><b id="s_salon">--</b></div>
+  </div>
+
+  <h2>🌡️ Températures (min / max 24 h)</h2>
+  <div class="carte thermos">
+    <div class="thermo" id="thermoExt"><b>🌤️ Extérieur</b><span class="val" id="valExt">--</span><div class="tube"><div class="merc"></div><i class="rep mx"></i><i class="rep mn"></i></div><div class="bulbe"></div><small id="mmExt">&nbsp;</small></div>
+    <div class="thermo" id="thermoPiscine"><b>🏊 Piscine</b><span class="val" id="valPiscine">--</span><div class="tube"><div class="merc"></div><i class="rep mx"></i><i class="rep mn"></i></div><div class="bulbe"></div><small id="mmPiscine">&nbsp;</small></div>
+    <div class="thermo" id="thermoBallon"><b>🚿 Cumulus</b><span class="val" id="valBallon">--</span><div class="tube"><div class="merc"></div><i class="rep mx"></i><i class="rep mn"></i></div><div class="bulbe"></div><small id="mmBallon">&nbsp;</small></div>
+  </div>
+
+  <h2>💰 Aujourd'hui</h2>
+  <div class="carte lignes">
+    <div><span>⚡ Réseau</span><span id="kWhDiffVal">--</span></div>
+    <div><span>💶 Coût estimé (tarif actuel)</span><span id="PrixDiffVal">--</span></div>
+  </div>
+  <div class="carte tempo">
+    <span><span class="pastille" id="pastilleAuj" style="background:#94a3b8"></span>Aujourd'hui : <span id="tempoAuj">—</span></span>
+    <span><span class="pastille" id="pastilleDem" style="background:#94a3b8"></span>Demain : <span id="tempoDem">—</span></span>
+    <span style="color:#dc2626">🔴 <span id="rougeRestant">?</span> rouges restants</span>
+  </div>
+  <p class="note" style="margin:0 4px">Page de consultation : données ThingSpeak, mises à jour toutes les 20 s. Pour piloter, utilisez la page locale de l'ESP32.</p>
 </section>
 
-<section id="cmd">
-<h2>🎛️ Commandes</h2>
-<div class="carte" style="text-align:center;padding:14px">
-<p style="margin:0;color:var(--mu)">🔒 Page de <b>consultation uniquement</b>.<br>Utilisez la page locale de l'ESP32 pour piloter.</p>
-</div>
-<form class="page" style="padding:0" onsubmit="return false">
-<fieldset class="carte"><legend>🌡️ Cumulus : <span id="legTempBallon">--°</span></legend>
-<fieldset class="sous"><legend id="CEcuisine">🍳 Cuisine : <span id="val1">--</span></legend>
-<div class="choix">
-<input type="radio" id="ChoixCuis1" name="CEcuis" value="au"><label for="ChoixCuis1">Auto</label>
-<input type="radio" id="ChoixCuis2" name="CEcuis" value="ma"><label for="ChoixCuis2">Marche</label>
-<input type="radio" id="ChoixCuis3" name="CEcuis" value="ar"><label for="ChoixCuis3">Arrêt</label>
-</div>
-</fieldset>
-<fieldset class="sous"><legend id="CEsdb">🚿 Salle de bain : <span id="ILed">--</span></legend>
-<div class="choix">
-<input type="radio" id="ChoixBain1" name="CEsdb" value="au"><label for="ChoixBain1">Auto</label>
-<input type="radio" id="ChoixBain2" name="CEsdb" value="ma"><label for="ChoixBain2">Marche</label>
-<input type="radio" id="ChoixBain3" name="CEsdb" value="ar"><label for="ChoixBain3">Arrêt</label>
-<input type="radio" id="ChoixBain4" name="CEsdb" value="hc"><label for="ChoixBain4">🌙 Auto & HC</label>
-</div>
-<div class="slider-temp">
-  <label for="sliderTempBallon">🌡️ Cible : <b id="ChoixTempBallon">—</b>°</label>
-  <input type="range" id="sliderTempBallon" min="30" max="65" step="1" value="50" aria-label="Température cible du ballon" disabled>
-</div>
-</fieldset>
-</fieldset>
-<fieldset class="carte"><legend>🏊 Piscine : <span id="temppiscine">--°</span></legend>
-<fieldset class="sous"><legend id="piscine">🌊 Pompe : <span id="val3">--</span></legend>
-<div class="choix">
-<input type="radio" id="Choixpiscine1" name="Piscine" value="au"><label for="Choixpiscine1">Auto</label>
-<input type="radio" id="Choixpiscine2" name="Piscine" value="ma"><label for="Choixpiscine2">Marche</label>
-<input type="radio" id="Choixpiscine3" name="Piscine" value="ar"><label for="Choixpiscine3">Arrêt</label>
-</div>
-</fieldset>
-<fieldset class="sous"><legend id="PAC1">♨️ Chauffage : <span id="val4">--</span></legend>
-<div class="choix">
-<input type="radio" id="Choixpompe11" name="PAC1" value="au"><label for="Choixpompe11">Auto</label>
-<input type="radio" id="Choixpompe12" name="PAC1" value="ma"><label for="Choixpompe12">Marche</label>
-<input type="radio" id="Choixpompe13" name="PAC1" value="ar"><label for="Choixpompe13">Arrêt</label>
-</div>
-</fieldset></fieldset>
-<fieldset class="carte"><legend id="SalonC2">🛋️ Chauffage salon : <span id="val5">--</span></legend>
-<div class="choix">
-<input type="radio" id="Salon1" name="Salon" value="au"><label for="Salon1">Auto</label>
-<input type="radio" id="Salon2" name="Salon" value="ma"><label for="Salon2">Marche</label>
-<input type="radio" id="Salon3" name="Salon" value="ar"><label for="Salon3">Arrêt</label>
-</div>
-</fieldset>
-</form>
+<!-- ===================== HISTORIQUE ===================== -->
+<section id="histo" hidden>
+  <div class="carte bars" id="bars">
+    <h3>Puissances instantanées</h3>
+    <div class="br"><span class="bl">☀️ Solaire</span><div class="bt"><i class="bb" id="bb0"></i><em class="bv" id="bv0"></em></div></div>
+    <div class="br"><span class="bl">🏠 Maison</span><div class="bt"><i class="bb" id="bb1"></i><em class="bv" id="bv1"></em></div></div>
+    <div class="br"><span class="bl">⚡ Réseau</span><div class="bt"><i class="bb" id="bb2"></i><em class="bv" id="bv2"></em></div></div>
+    <div class="br"><span class="bl">🚿 Cumulus</span><div class="bt"><i class="bb" id="bb3"></i><em class="bv" id="bv3"></em></div></div>
+    <div class="br"><span class="bl">♨️ Chauffage</span><div class="bt"><i class="bb" id="bb4"></i><em class="bv" id="bv4"></em></div></div>
+    <div class="br"><span></span><div class="bt ax" id="bax"></div></div>
+  </div>
+  <div class="carte rec">
+    <div><b id="rSol">--</b><small>Pic solaire<br>(≈ 100 min)</small></div>
+    <div><b id="rRes">--</b><small>Pic réseau<br>(≈ 100 min)</small></div>
+    <div><b id="rTot">--</b><small>Pic maison<br>(≈ 100 min)</small></div>
+  </div>
+  <p class="note" id="histoErr" style="margin:0 4px"></p>
+  <div class="carte"><div id="curve_chart" class="graph"></div></div>
+  <div class="carte"><div id="curve_chart_Temp" class="graph"></div></div>
+  <h2>ThingSpeak</h2>
+  <div class="ts">
+    <iframe class="ts1" data-src="https://thingspeak.com/channels/1922173/charts/4?bgcolor=%23ffffff&color=%23d62020&days=1&dynamic=true&title=Chauffage&type=step"></iframe>
+    <iframe class="ts1" data-src="https://thingspeak.com/channels/1922173/charts/5?color=%23eeff00&days=2&dynamic=true&title=Photovolta%C3%AFque&type=spline&yaxismin=0"></iframe>
+    <iframe class="ts1" data-src="https://thingspeak.com/channels/1922173/charts/8?bgcolor=%23ffffff&color=%23d62020&days=4&max=500&title=Conso+kWh"></iframe>
+  </div>
 </section>
 
-<section id="graph">
-<h2>📈 Graphiques</h2>
-<div class="carte"><div id="barchart_values" class="graph haut"></div></div>
-<div class="carte"><div id="curve_chart" class="graph"></div></div>
-<div class="carte"><div id="curve_chart_Temp" class="graph" style="height:300px"></div></div>
-<div class="thingspeak">
-<iframe class="ts" loading="lazy" src="https://thingspeak.com/channels/1922173/charts/4?bgcolor=%23ffffff&color=%23d62020&days=1&dynamic=true&title=Chauffage&type=step"></iframe>
-<iframe class="ts" loading="lazy" src="https://thingspeak.com/channels/1922173/charts/5?color=%23eeff00&days=2&dynamic=true&title=Photovolta%C3%AFque&type=spline&yaxismin=0"></iframe>
-<iframe class="ts" loading="lazy" src="https://thingspeak.com/channels/1922173/charts/8?bgcolor=%23ffffff&color=%23d62020&days=4&max=500&title=Conso+kWh"></iframe>
-</div>
+<!-- ===================== ALERTES ===================== -->
+<section id="alertes" hidden>
+  <div class="carte" id="listeAl"></div>
+  <div class="carte">
+    <div class="actions">
+      <button type="button" id="btnNotif" onclick="autoriserNotif()">🔔 Autoriser les notifications</button>
+      <button type="button" onclick="testAlerte()">📳 Tester vibration</button>
+    </div>
+    <p class="note">Les alertes sont évaluées par ce téléphone et ne fonctionnent que pendant que la page est ouverte. Les seuils sont enregistrés sur cet appareil.</p>
+  </div>
 </section>
 </main>
+
+<nav class="nav">
+  <button type="button" id="n_accueil" onclick="go('accueil')"><span>🏠</span>Accueil</button>
+  <button type="button" id="n_histo" onclick="go('histo')"><span>📈</span>Historique</button>
+  <button type="button" id="n_alertes" onclick="go('alertes')"><span>🔔</span>Alertes</button>
+</nav>
+
 <script>
-// ============ Utilitaires ============
-var heure = 0;
-function cssVar(nom) {
-  return getComputedStyle(document.documentElement).getPropertyValue(nom).trim() || '#0f172a';
-}
-function setText(id, txt) {
-  var el = document.getElementById(id);
-  if (el && el.textContent !== txt) el.textContent = txt;
+// ============ Constantes ThingSpeak ============
+var CHANNEL_ID = "1922173";
+var TS_KEY = "";   // Canal privé : mettez ici votre clé de LECTURE (Read API Key)
+function tsUrl(chemin, params) { return "https://api.thingspeak.com/channels/" + CHANNEL_ID + chemin + "?" + params + (TS_KEY ? "&api_key=" + TS_KEY : ""); }
+var TS_LAST  = tsUrl("/feeds/last.json", "results=1");
+var TS_HISTO = tsUrl("/feeds.json", "results=300");                  // ~100 min (un point toutes les 20 s)
+var TS_TEMP  = tsUrl("/feeds.json", "days=2&average=60&round=1");    // moyenne horaire sur 2 jours
+var TarifHC = 0.132, TarifHP = 0.1752;   // ajustés selon la couleur Tempo
+
+var $ = function (i) { return document.getElementById(i); };
+function setText(id, t) { var e = $(id); if (e && e.textContent !== t) e.textContent = t; }
+function setCls(id, c) { var e = $(id); if (e && e.className !== c) e.className = c; }
+var heure = 0, echecs = 0;
+
+// ---------------- Navigation par onglets
+var onglets = ["accueil", "histo", "alertes"];
+function go(n) {
+  if (onglets.indexOf(n) < 0) n = "accueil";
+  onglets.forEach(function (o) { $(o).hidden = (o !== n); $("n_" + o).classList.toggle("on", o === n); });
+  try { history.replaceState(null, "", "#" + n); } catch (e) {}
+  if (n === "histo") ouvrirHisto();
+  window.scrollTo(0, 0);
 }
 
-// ============ Thermomètres ============
+// ---------------- État partagé
+var S = { sol: 0, tot: 0, res: 0, bal: 0, ch: 0, ext: NaN, pisc: NaN, ball: NaN, t: 0, age: 0 };
+
+// ---------------- Mini-courbes
+var hist = { Sol: [], Tot: [], Res: [], Bal: [] };
+function dessineSpark(k) {
+  var a = hist[k]; if (!a.length) return;
+  var mn = Math.min.apply(null, a.concat(0)), mx = Math.max.apply(null, a.concat(1));
+  var pts = a.map(function (y, i) { return (i * 100 / Math.max(1, a.length - 1)).toFixed(1) + "," + (22 - (y - mn) / (mx - mn) * 20).toFixed(1); }).join(" ");
+  $("sp" + k).setAttribute("points", pts);
+}
+function spark(k, v) { var a = hist[k]; a.push(v); if (a.length > 90) a.shift(); dessineSpark(k); }
+
+// ---------------- Thermomètres
 var echelles = { Ext: [-10, 40], Piscine: [0, 40], Ballon: [20, 70] };
 var seuils = { Ext: [10, 25], Piscine: [24, 28], Ballon: [40, 55] };
+var mm = { Ext: null, Piscine: null, Ballon: null };
 function couleurTemp(id, v) { var s = seuils[id]; return v < s[0] ? "#2563eb" : (v < s[1] ? "#f59e0b" : "#dc2626"); }
 function posTemp(id, v) { var e = echelles[id]; return Math.max(0, Math.min(100, (v - e[0]) / (e[1] - e[0]) * 100)); }
+function majRepere(id) {
+  var m = mm[id]; if (!m) return;
+  var el = $("thermo" + id);
+  el.style.setProperty("--mn", posTemp(id, m.mn)); el.style.setProperty("--mx", posTemp(id, m.mx));
+  el.style.setProperty("--cmn", couleurTemp(id, m.mn)); el.style.setProperty("--cmx", couleurTemp(id, m.mx));
+  $("mm" + id).innerHTML = '24 h<br><span style="color:' + couleurTemp(id, m.mx) + '">▲ ' + m.mx.toFixed(1) + '°</span> <span style="color:' + couleurTemp(id, m.mn) + '">▼ ' + m.mn.toFixed(1) + '°</span>';
+}
 function majThermo(id, v) {
   if (isNaN(v)) return;
-  var el = document.getElementById("thermo" + id);
-  if (!el) return;
-  el.style.setProperty("--p", posTemp(id, v));
-  el.style.setProperty("--col", couleurTemp(id, v));
-  var val = document.getElementById("val" + id);
-  if (val) val.innerHTML = v.toFixed(1) + "°";
+  var el = $("thermo" + id);
+  el.style.setProperty("--p", posTemp(id, v)); el.style.setProperty("--col", couleurTemp(id, v));
+  $("val" + id).textContent = v.toFixed(1) + "°";
+  if (id == "Ext") S.ext = v; else if (id == "Piscine") S.pisc = v; else S.ball = v;
+  var m = mm[id];
+  if (m) { if (v < m.mn) m.mn = v; if (v > m.mx) m.mx = v; majRepere(id); }
 }
 
-// ============ Récupération ThingSpeak ============
-function rafraichirDepuisThingSpeak() {
-  fetch(TS_LAST, { cache: 'no-store' })
-    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
-    .then(function (d) {
-      // ---- Extraction des champs (|| 0 pour gérer les null) ----
-      var tempExt  = parseFloat(d.field1);
-      var tempPisc = parseFloat(d.field2);
-      var tempBall = parseFloat(d.field3);
-      var pChauf   = parseFloat(d.field4) || 0;
-      var pSol     = parseFloat(d.field5) || 0;
-      var pTot     = parseFloat(d.field6) || 0;
-      var pBallon  = parseFloat(d.field7) || 0;
-      var kWhRes   = parseFloat(d.field8) || 0;
-      var pReseau  = pTot - pSol;   // Calculée, plus envoyée à ThingSpeak
-
-      // ---- Températures ----
-      if (!isNaN(tempExt))  majThermo("Ext",     tempExt);
-      if (!isNaN(tempPisc)) majThermo("Piscine", tempPisc);
-      if (!isNaN(tempBall)) majThermo("Ballon",  tempBall);
-      if (!isNaN(tempPisc)) setText("temppiscine", tempPisc.toFixed(1) + "°");
-      if (!isNaN(tempBall)) setText("legTempBallon", tempBall.toFixed(1) + "°");
-
-      // ---- Header ----
-      setText("navSol", pSol + " W");
-      setText("navTot", pTot + " W");
-      setText("navBat", "— W");   // Non disponible via ThingSpeak
-
-      // ---- Jauges de puissance ----
-      if (chartsPrets) {
-        optionsPuissanceT = { width: tj, height: tj, animation:{duration:animationGauges,easing:'inAndOut'},
-          redFrom: 5500, redTo: 6000, yellowFrom: pSol, yellowTo: 5500, greenFrom: 0, greenTo: pSol,
-          majorTicks: ['0','1000','2000','3000','4000','5000','6000'], minorTicks: 10, max: 6000, min: 0 };
-        optionsPuissanceS = { width: tj, height: tj, animation:{duration:animationGauges,easing:'inAndOut'},
-          yellowFrom: 0, yellowTo: pTot, greenFrom: pTot, greenTo: 5000,
-          majorTicks: ['0','1000','2000','3000','4000','5000'], minorTicks: 10, max: 5000, min: 0 };
-
-        dataPuissance.setValue(0, 1, Math.round(pReseau));  formatPuissance.format(dataPuissance, 1);  chartPuissance.draw(dataPuissance, optionsPuissance);
-        dataPuissanceS.setValue(0, 1, Math.round(pSol));    formatPuissance.format(dataPuissanceS, 1);  chartPuissanceS.draw(dataPuissanceS, optionsPuissanceS);
-        dataPuissanceT.setValue(0, 1, Math.round(pTot));    formatPuissance.format(dataPuissanceT, 1);  chartPuissanceT.draw(dataPuissanceT, optionsPuissanceT);
-        dataPuissanceB.setValue(0, 1, 0);       formatPuissance.format(dataPuissanceB, 1);  chartPuissanceB.draw(dataPuissanceB, optionsPuissanceB);
-      }
-
-      // ---- Bar chart ----
-      if (chartsPrets && chartBarre) {
-        var maxi = Math.max(pSol, pTot, Math.abs(pReseau), pBallon, pChauf, 500);
-        optionsBarre.hAxis.maxValue = Math.ceil(maxi / 500) * 500;
-        if (optionsBarre.hAxis.maxValue < 1000) optionsBarre.hAxis.maxValue = 1000;
-
-        var coulReseau = pReseau > 0
-          ? "stroke-color:#FFF;stroke-width:1;fill-opacity:.7;color:red"
-          : "stroke-color:#FFF;stroke-width:1;fill-opacity:.7;color:green";
-        dataBarreCourante = google.visualization.arrayToDataTable([
-          ["Mesure", "Puissance", { role: 'style' }, { role: 'annotation' }],
-          ["Photovoltaique", pSol,    'stroke-color:#FFF;stroke-width:1;fill-opacity:.7;color:gold', pSol + " W"],
-          ["Conso totale",   pTot,    'stroke-color:#FFF;stroke-width:1;fill-opacity:.7;color:red',  pTot + " W"],
-          ["Conso réseau",   pReseau, coulReseau, pReseau + " W"],
-          ["Chauffe eau",    pBallon, 'stroke-color:#FFF;stroke-width:1;fill-opacity:.7;color:red',  pBallon + " W"],
-          ["Chauffage",      pChauf,  'stroke-color:#FFF;stroke-width:1;fill-opacity:.7;color:red',  pChauf + " W"],
-          ["Batterie",       0,       'stroke-color:#FFF;stroke-width:1;fill-opacity:.7;color:green', "—"]
-        ]);
-        chartBarre.draw(dataBarreCourante, optionsBarre);
-      }
-
-      // ---- kWh et coût ----
-      var tarif = (heure >= 6 && heure < 22) ? TarifHP : TarifHC;
-      setText("kWhDiffVal", kWhRes.toFixed(2) + " kWh réseau");
-      setText("PrixDiffVal", (kWhRes * tarif).toFixed(2) + " € réseau");
-      setText("kWhSolaireVal", "— kWh solaire");      // Pas en kWh séparé dans ThingSpeak
-      setText("kWhTotalVal", "— kWh total");           // Pas séparé non plus
-      setText("PrixTotalVal", "—");
-      setText("PrixSolaireVal", "—");
-      setText("kWhDiffHCVal", "—");
-      setText("PrixDiffHCVal", "—");
-      setText("PrixparheureVal", (pReseau * tarif / 1000).toFixed(2) + " € / heure");
-
-      // ---- État dynamique déduit des puissances ----
-      // Cumulus SdB : actif si field7 > 100 W
-      var cumulusOn = (pBallon > 100 && pBallon < 900) || pBallon > 1000;
-      setText("ILed2", cumulusOn ? "En chauffe" : "Arrêt");
-      setText("ILed",  cumulusOn ? "En chauffe" : "Arrêt");
-      var elCS = document.getElementById("CEsdb");
-      if (elCS) elCS.style.setProperty('--text-color', cumulusOn ? "green" : "red");
-      var elCS2 = document.getElementById("CEsdb2");
-      if (elCS2) elCS2.style.setProperty('--text-color', cumulusOn ? "green" : "red");
-
-      // Chauffage salon : actif si field4 > 50 W
-      var chaufOn = pChauf > 50;
-      setText("val5", chaufOn ? "En chauffe" : "Arrêt");
-      setText("Salon", chaufOn ? "En chauffe" : "Arrêt");
-      var elSc = document.getElementById("SalonC");
-      if (elSc) elSc.style.setProperty('--text-color', chaufOn ? "green" : "red");
-      var elSc2 = document.getElementById("SalonC2");
-      if (elSc2) elSc2.style.setProperty('--text-color', chaufOn ? "green" : "red");
-
-            // Cumulus cuisine : déduit de field7 > 2050 W
-      // (les deux cumulus tournent alors simultanément — cas du mode HC)
-	  var cuisineOn = (pBallon > 2050) || (pBallon > 900 && pBallon < 980);
-      setText("CEcuis", cuisineOn ? "En chauffe" : "Arrêt");
-      setText("val1", cuisineOn ? "En chauffe" : "Arrêt");
-      var elCC = document.getElementById("CEcuisine");
-      if (elCC) elCC.style.setProperty('--text-color', cuisineOn ? "green" : "red");
-      var elCC2 = document.getElementById("CEcuisine2");
-      if (elCC2) elCC2.style.setProperty('--text-color', cuisineOn ? "green" : "red");
-
-      // Les autres états ne sont pas disponibles via ThingSpeak
-      setText("Pompe", "—");
-      setText("val3", "—");
-      setText("PAC1pisc", "—");
-      setText("val4", "—");
-
-      // ---- Indicateur de connexion OK ----
-      var ec = document.getElementById("etatConnexion");
-      if (ec) ec.classList.remove("hors");
-    })
-    .catch(function (err) {
-      console.warn("ThingSpeak KO :", err);
-      var ec = document.getElementById("etatConnexion");
-      if (ec) ec.classList.add("hors");
-    });
-}
-
-// ============ Historique des graphiques (une seule fois au chargement) ============
-function messageGraph(id, txt) {   // affiche la raison au lieu d'un cadre vide
-  var el = document.getElementById(id);
-  if (el) el.innerHTML = '<p style="text-align:center;padding:40px 10px;opacity:.7">' + txt + '</p>';
-}
+// ---------------- Récupération ThingSpeak
 function chargerFeeds(url) {
-  return fetch(url, { cache: 'no-store' })
+  return fetch(url, { cache: "no-store" })
     .then(function (r) { if (!r.ok) throw new Error("ThingSpeak HTTP " + r.status + " (canal privé ? mettez TS_KEY)"); return r.json(); })
     .then(function (j) { if (!j || !j.feeds) throw new Error("réponse ThingSpeak inattendue"); return j.feeds; });
 }
-function chargerHistorique() {
-  // ---- Graphique Consommation (points de 20 s) ----
-  chargerFeeds(TS_HISTO).then(function (feeds) {
-    data_Graphique = google.visualization.arrayToDataTable([[
-      {label:'heure',type:'timeofday'}, {label:'Conso réseau',type:'number'}, {label:'Conso totale',type:'number'}, {label:'Solaire',type:'number'}
-    ]]);
-    var n = 0;
-    feeds.forEach(function (f) {
-      var d = new Date(f.created_at);
-      if (isNaN(d.getTime()) || (f.field5 == null && f.field6 == null)) return;
-      var pSol = parseFloat(f.field5) || 0, pTot = parseFloat(f.field6) || 0;
-      data_Graphique.addRow([[d.getHours(), d.getMinutes(), d.getSeconds()], Math.round(pTot - pSol), Math.round(pTot), Math.round(pSol)]);
-      n++;
+var tempFeeds = [], tTemp = 0;
+function chargerTemp() {
+  return chargerFeeds(TS_TEMP).then(function (feeds) {
+    tempFeeds = feeds; tTemp = Date.now();
+    var lim = Date.now() - 86400000;
+    [["Ext", "field1"], ["Piscine", "field2"], ["Ballon", "field3"]].forEach(function (p) {
+      var mn = Infinity, mx = -Infinity, dern = NaN;
+      feeds.forEach(function (f) {
+        var v = parseFloat(f[p[1]]); if (isNaN(v)) return;
+        dern = v;
+        if (Date.parse(f.created_at) >= lim) { if (v < mn) mn = v; if (v > mx) mx = v; }
+      });
+      if (mn !== Infinity) { mm[p[0]] = { mn: mn, mx: mx }; majRepere(p[0]); }
+      var actuel = p[0] == "Ext" ? S.ext : (p[0] == "Piscine" ? S.pisc : S.ball);
+      if (isNaN(actuel)) majThermo(p[0], dern);   // dernière moyenne horaire si pas de valeur instantanée
     });
-    if (!n) throw new Error("aucune mesure reçue");
-    chart_Graphique.draw(data_Graphique, options_Graphique);
-  }).catch(function (e) { console.warn("Historique consommation KO :", e); messageGraph("curve_chart", "Consommation : " + e.message); });
-
-  // ---- Graphique Températures (moyenne par heure : ces champs ne sont écrits qu'une fois par heure) ----
-  chargerFeeds(TS_TEMP).then(function (feeds) {
-    data_Graphique_Temp = google.visualization.arrayToDataTable([[{label:'Heure',type:'string'},{label:'Température extérieure',type:'number'},{label:'Température Piscine',type:'number'}]]);
-    var n = 0;
-    feeds.forEach(function (f) {
-      var d = new Date(f.created_at);
-      var tExt = parseFloat(f.field1), tPis = parseFloat(f.field2);
-      if (isNaN(d.getTime()) || (isNaN(tExt) && isNaN(tPis))) return;
-      var lib = d.getDate() + "/" + (d.getMonth() + 1) + " " + ("0" + d.getHours()).slice(-2) + "h";
-      data_Graphique_Temp.addRow([lib, isNaN(tExt) ? null : tExt, isNaN(tPis) ? null : tPis]);
-      n++;
-    });
-    if (!n) throw new Error("pas encore de mesure (envoyée toutes les heures)");
-    chart_Graphique_Temp.draw(data_Graphique_Temp, options_Graphique_Temp);
-  }).catch(function (e) { console.warn("Historique températures KO :", e); messageGraph("curve_chart_Temp", "Températures : " + e.message); });
+  }).catch(function (e) { console.warn("Températures KO :", e); setText("histoErr", "Températures : " + e.message); });
 }
 
-// Attendre que les charts soient prêts puis charger
-var intervalHisto = setInterval(function () {
-  if (chartsPrets) { clearInterval(intervalHisto); rafraichirDepuisThingSpeak(); chargerHistorique(); }
-}, 200);
+var lignes = [], lastId = 0, tConso = 0;
+function ligneDe(f) {
+  var d = new Date(f.created_at);
+  if (isNaN(d.getTime()) || (f.field5 == null && f.field6 == null)) return null;
+  var sol = Math.round(parseFloat(f.field5) || 0), tot = Math.round(parseFloat(f.field6) || 0);
+  return { id: parseInt(f.entry_id) || 0, h: [d.getHours(), d.getMinutes(), d.getSeconds()], sol: sol, tot: tot, res: tot - sol, bal: Math.round(parseFloat(f.field7) || 0) };
+}
+function majRec() {
+  var a = 0, b = 0, c = 0;
+  lignes.forEach(function (l) { if (l.sol > a) a = l.sol; if (l.res > b) b = l.res; if (l.tot > c) c = l.tot; });
+  setText("rSol", lignes.length ? a + " W" : "--"); setText("rRes", lignes.length ? b + " W" : "--"); setText("rTot", lignes.length ? c + " W" : "--");
+}
+function chargerConso() {
+  return chargerFeeds(TS_HISTO).then(function (feeds) {
+    lignes = feeds.map(ligneDe).filter(function (l) { return l; });
+    if (!lignes.length) throw new Error("aucune mesure reçue");
+    lastId = lignes[lignes.length - 1].id; tConso = Date.now();
+    var fin = lignes.slice(-90);
+    hist.Sol = fin.map(function (l) { return l.sol; }); hist.Tot = fin.map(function (l) { return l.tot; });
+    hist.Res = fin.map(function (l) { return l.res; }); hist.Bal = fin.map(function (l) { return l.bal; });
+    ["Sol", "Tot", "Res", "Bal"].forEach(dessineSpark);
+    majRec();
+  }).catch(function (e) { console.warn("Historique KO :", e); setText("histoErr", "Consommation : " + e.message); });
+}
 
-// Lancer immédiatement puis toutes les 20 s
-rafraichirDepuisThingSpeak();
-setInterval(rafraichirDepuisThingSpeak, 20000);
+function etat(id, on) { setText("s_" + id, on ? "En chauffe" : "Arrêt"); setCls("c_" + id, "chip" + (on ? " on" : "")); }
 
-// ============ Tempo (optionnel, si CORS le permet) ============
+function rafraichir() {
+  if (document.hidden) return;
+  fetch(TS_LAST, { cache: "no-store" })
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function (d) {
+      echecs = 0;
+      var tE = parseFloat(d.field1), tP = parseFloat(d.field2), tB = parseFloat(d.field3);
+      var pCh = parseFloat(d.field4) || 0, pSol = parseFloat(d.field5) || 0, pTot = parseFloat(d.field6) || 0;
+      var pBal = parseFloat(d.field7) || 0, kWhRes = parseFloat(d.field8) || 0, pRes = pTot - pSol;
+      S.sol = pSol; S.tot = pTot; S.res = pRes; S.bal = pBal; S.ch = pCh;
+      S.t = Date.parse(d.created_at); S.age = isNaN(S.t) ? 0 : (Date.now() - S.t) / 60000;
+
+      majThermo("Ext", tE); majThermo("Piscine", tP); majThermo("Ballon", tB);
+
+      setText("hSol", Math.round(pSol) + " W"); setText("hTot", Math.round(pTot) + " W");
+      setText("hRes", Math.round(pRes) + " W"); setText("hBal", Math.round(pBal) + " W");
+      setText("hResSub", pRes > 0 ? "soutirage depuis le réseau" : "injection / aucun soutirage");
+      setCls("tRes", "t " + (pRes > 0 ? "bad" : "good"));
+      // États déduits des puissances (même logique que l'ancienne page GitHub)
+      var cumulusOn = (pBal > 100 && pBal < 900) || pBal > 1000;
+      var cuisineOn = (pBal > 2050) || (pBal > 900 && pBal < 980);
+      var chaufOn = pCh > 50;
+      setText("hBalSub", (cumulusOn || cuisineOn) ? "en chauffe" : "arrêt");
+      setCls("tBal", "t " + ((cumulusOn || cuisineOn) ? "good" : ""));
+      etat("sdb", cumulusOn); etat("cuis", cuisineOn); etat("salon", chaufOn);
+
+      setText("wBal", Math.round(pBal) + " W"); setText("wCh", Math.round(pCh) + " W");
+      var cv = pTot > 0 ? Math.min(100, Math.round(pSol * 100 / pTot)) : 0;
+      setText("cvPct", cv + " %"); $("cvBar").style.width = cv + "%";
+      var tarif = (heure >= 6 && heure < 22) ? TarifHP : TarifHC;
+      setText("PrixparheureVal", (Math.max(0, pRes) * tarif / 1000).toFixed(2) + " €/h");
+      setText("kWhDiffVal", kWhRes.toFixed(2) + " kWh");
+      setText("PrixDiffVal", (kWhRes * tarif).toFixed(2) + " €");
+      majBarres([pSol, pTot, pRes, pBal, pCh].map(Math.round));
+
+      var id = parseInt(d.entry_id) || 0;
+      if (id > lastId) {
+        var l = ligneDe(d);
+        if (l) {
+          lastId = id; lignes.push(l); if (lignes.length > 360) lignes.shift();
+          spark("Sol", l.sol); spark("Tot", l.tot); spark("Res", l.res); spark("Bal", l.bal); majRec();
+          if (chartsPrets && !$("histo").hidden) dessiner();
+        }
+      }
+      var titre = "Conso Nata : " + Math.round(pRes) + "W";
+      if (document.title !== titre) document.title = titre;
+      evalAlertes();
+    })
+    .catch(function (e) { echecs++; console.warn("ThingSpeak KO :", e); evalAlertes(); });
+}
+
+// ---------------- Graphique des puissances instantanées
+var axeCle = "";
+function majBarres(v) {
+  var maxi = Math.max.apply(null, v.concat(500)), mini = Math.min.apply(null, v);
+  var mx = Math.max(1000, Math.ceil(maxi / 500) * 500), mn = mini < -300 ? Math.floor(mini / 500) * 500 : -300;
+  var pc = function (x) { return (x - mn) / (mx - mn) * 100; };
+  $("bars").style.setProperty("--z", pc(0) + "%");
+  var coul = ["#f5c518", "#dc2626", v[2] > 0 ? "#dc2626" : "#16a34a", "#dc2626", "#dc2626"];
+  for (var i = 0; i < 5; i++) {
+    var b = $("bb" + i), t = $("bv" + i), x = v[i];
+    b.style.left = pc(Math.min(0, x)) + "%"; b.style.width = Math.abs(x) / (mx - mn) * 100 + "%"; b.style.background = coul[i];
+    t.textContent = x + " W";
+    var fin = pc(Math.max(0, x));
+    if (x >= 0 && fin < 80) { t.style.left = "calc(" + fin + "% + 5px)"; t.style.transform = ""; }
+    else if (x >= 0) { t.style.left = "calc(" + fin + "% - 5px)"; t.style.transform = "translateX(-100%)"; }
+    else { t.style.left = "calc(" + pc(0) + "% + 5px)"; t.style.transform = ""; }
+  }
+  var cle = mn + "/" + mx;
+  if (cle !== axeCle) {
+    axeCle = cle; var pas = (mx - mn) > 3000 ? 1000 : 500, h = "";
+    for (var g = Math.ceil(mn / pas) * pas; g <= mx; g += pas) h += '<span style="left:' + pc(g) + '%">' + g + '</span>';
+    $("bax").innerHTML = h;
+  }
+}
+
+// ---------------- Historique : Google Charts chargé à la demande
+var chartsPrets = false, chargeDemande = false, chart_Graphique, chart_Graphique_Temp, options_Graphique, options_Graphique_Temp;
+var mqSombre = window.matchMedia("(prefers-color-scheme: dark)");
+function themeGraph(o) {
+  var tc = mqSombre.matches ? "#e2e8f0" : "#0f172a", gc = mqSombre.matches ? "#334155" : "#e2e8f0";
+  o.titleTextStyle = { color: tc }; o.legend.textStyle = { color: tc };
+  ["hAxis", "vAxis"].forEach(function (a) { o[a].textStyle = { color: tc }; o[a].titleTextStyle = { color: tc }; o[a].gridlines = { color: gc }; });
+}
+function tableConso() {
+  var t = new google.visualization.DataTable();
+  t.addColumn("timeofday", "heure"); t.addColumn("number", "Conso réseau"); t.addColumn("number", "Conso totale"); t.addColumn("number", "Solaire");
+  lignes.forEach(function (l) { t.addRow([l.h, l.res, l.tot, l.sol]); });
+  return t;
+}
+function tableTemp() {
+  var t = new google.visualization.DataTable();
+  t.addColumn("string", "Heure"); t.addColumn("number", "Température extérieure"); t.addColumn("number", "Température Piscine");
+  tempFeeds.forEach(function (f) {
+    var d = new Date(f.created_at), e = parseFloat(f.field1), p = parseFloat(f.field2);
+    if (isNaN(d.getTime()) || (isNaN(e) && isNaN(p))) return;
+    t.addRow([d.getDate() + "/" + (d.getMonth() + 1) + " " + ("0" + d.getHours()).slice(-2) + "h", isNaN(e) ? null : e, isNaN(p) ? null : p]);
+  });
+  return t;
+}
+function dessiner() {
+  if (!chartsPrets) return;
+  themeGraph(options_Graphique); themeGraph(options_Graphique_Temp);
+  try { if (lignes.length) chart_Graphique.draw(tableConso(), options_Graphique); } catch (e) { console.log(e); }
+  try { if (tempFeeds.length) chart_Graphique_Temp.draw(tableTemp(), options_Graphique_Temp); } catch (e) { console.log(e); }
+}
+function construire() {
+  options_Graphique = { chartArea: { width: "82%" }, title: "Consommation", hAxis: { title: "Heure" }, vAxis: { title: "Watt", minValue: 0 }, colors: ["#3b82f6", "#ef4444", "#f59e0b"], curveType: "function", legend: { position: "top" }, backgroundColor: "none" };
+  options_Graphique_Temp = { chartArea: { width: "88%" }, title: "Températures", hAxis: { title: "Heure" }, vAxis: { title: "Température" }, colors: ["#ef4444", "#3b82f6"], curveType: "function", legend: { position: "top" }, backgroundColor: "none" };
+  chart_Graphique = new google.visualization.LineChart($("curve_chart"));
+  chart_Graphique_Temp = new google.visualization.LineChart($("curve_chart_Temp"));
+  chartsPrets = true; dessiner();
+  if (mqSombre.addEventListener) mqSombre.addEventListener("change", dessiner);
+}
+function ouvrirHisto() {
+  document.querySelectorAll("iframe[data-src]").forEach(function (f) { f.src = f.getAttribute("data-src"); f.removeAttribute("data-src"); });
+  if (Date.now() - tConso > 60000) chargerConso().then(dessiner);
+  if (Date.now() - tTemp > 600000) chargerTemp().then(dessiner);
+  if (chargeDemande) { dessiner(); return; }
+  chargeDemande = true;
+  var s = document.createElement("script");
+  s.src = "https://www.gstatic.com/charts/loader.js";
+  s.onload = function () { google.charts.load("current", { packages: ["corechart"] }); google.charts.setOnLoadCallback(construire); };
+  s.onerror = function () { chargeDemande = false; setText("histoErr", "Graphiques Google indisponibles."); };
+  document.head.appendChild(s);
+}
+var rz; window.addEventListener("resize", function () { clearTimeout(rz); rz = setTimeout(dessiner, 250); });
+
+// ---------------- Alertes (évaluées sur le téléphone)
+var REGLES = [
+  { id: "co", ico: "📡", nom: "Connexion à ThingSpeak perdue", u: "", v: null, on: true, t: function () { return echecs >= 2; }, m: function () { return "Connexion à ThingSpeak perdue"; } },
+  { id: "vieux", ico: "⏳", nom: "Aucune mesure ESP32 depuis plus de", u: "min", v: 5, on: true, t: function (v) { return S.age > v; }, m: function () { return "Dernière mesure il y a " + Math.round(S.age) + " min"; } },
+  { id: "res", ico: "⚡", nom: "Soutirage réseau supérieur à", u: "W", v: 3000, on: false, t: function (v) { return S.res > v; }, m: function () { return "Réseau : " + Math.round(S.res) + " W"; } },
+  { id: "pisc", ico: "🏊", nom: "Piscine supérieure à", u: "°C", v: 30, on: false, t: function (v) { return S.pisc > v; }, m: function () { return "Piscine à " + S.pisc.toFixed(1) + "°"; } },
+  { id: "ball", ico: "🚿", nom: "Cumulus inférieur à", u: "°C", v: 40, on: false, t: function (v) { return S.ball < v; }, m: function () { return "Cumulus à " + S.ball.toFixed(1) + "°"; } },
+  { id: "gel", ico: "🥶", nom: "Gel : extérieur inférieur à", u: "°C", v: 2, on: true, t: function (v) { return S.ext < v; }, m: function () { return "Extérieur à " + S.ext.toFixed(1) + "°"; } }
+];
+var CFG = {}, prev = {}, dernNotif = {};
+(function () {
+  var sv = {};
+  try { sv = JSON.parse(localStorage.getItem("nataAlGh") || "{}"); } catch (e) {}
+  REGLES.forEach(function (r) { var s = sv[r.id] || {}; CFG[r.id] = { on: s.on === undefined ? r.on : s.on, v: s.v === undefined ? r.v : s.v }; });
+})();
+function sauveCfg() { try { localStorage.setItem("nataAlGh", JSON.stringify(CFG)); } catch (e) {} }
+function construireAlertes() {
+  var h = "";
+  REGLES.forEach(function (r) {
+    h += '<div class="al"><input type="checkbox" id="ck_' + r.id + '"' + (CFG[r.id].on ? " checked" : "") + '><span class="n">' + r.ico + " " + r.nom + '</span><span class="pill" id="st_' + r.id + '">OK</span>';
+    if (r.v !== null) h += '<div class="v"><input type="number" id="nv_' + r.id + '" value="' + CFG[r.id].v + '" inputmode="decimal"> ' + r.u + "</div>";
+    h += "</div>";
+  });
+  $("listeAl").innerHTML = h;
+  REGLES.forEach(function (r) {
+    $("ck_" + r.id).addEventListener("change", function () { CFG[r.id].on = this.checked; sauveCfg(); evalAlertes(); });
+    var n = $("nv_" + r.id);
+    if (n) n.addEventListener("change", function () { var x = parseFloat(this.value); if (!isNaN(x)) { CFG[r.id].v = x; sauveCfg(); evalAlertes(); } });
+  });
+}
+function notifier(r) {
+  var now = Date.now();
+  if (dernNotif[r.id] && now - dernNotif[r.id] < 300000) return;
+  dernNotif[r.id] = now;
+  try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (e) {}
+  try { if (window.Notification && Notification.permission === "granted") new Notification("Nata : " + r.ico + " " + r.nom, { body: r.m(CFG[r.id].v) }); } catch (e) {}
+}
+function evalAlertes() {
+  var actifs = [];
+  REGLES.forEach(function (r) {
+    var c = CFG[r.id], act = false;
+    try { act = !!(c.on && r.t(c.v)); } catch (e) {}
+    if (act) actifs.push(r.ico + " " + r.m(c.v));
+    if (act && prev[r.id] === false) notifier(r);
+    prev[r.id] = act;
+    var e = $("st_" + r.id);
+    if (e) { e.textContent = c.on ? (act ? "⚠️ Actif" : "OK") : "Désactivée"; e.className = "pill" + (act ? " bad" : (c.on ? " ok" : "")); }
+  });
+  var nbA = $("nbAl"); nbA.textContent = actifs.length; nbA.hidden = actifs.length === 0;
+  var b = $("banAl"); b.hidden = actifs.length === 0; if (actifs.length) b.textContent = "⚠️ " + actifs.join(" · ");
+  $("dotCo").className = "dot" + (echecs >= 2 ? " hors" : "");
+}
+function autoriserNotif() {
+  if (!window.Notification) { alert("Notifications non disponibles sur ce navigateur."); return; }
+  Notification.requestPermission();
+}
+function testAlerte() { try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); else alert("Vibration non disponible."); } catch (e) {} }
+if (!window.Notification) $("btnNotif").hidden = true;
+construireAlertes();
+setInterval(function () { if (S.t) S.age = (Date.now() - S.t) / 60000; evalAlertes(); }, 5000);
+
+// ---------------- Tempo
 function chargerTempo() {
-  var labels = { 1: "Bleu", 2: "Blanc", 3: "Rouge" };
-  var couleurs = { 1: "blue", 2: "white", 3: "red" };
-  fetch("https://www.api-couleur-tempo.fr/api/jourTempo/today")
-    .then(function (r) { return r.json(); })
-    .then(function (d) {
-      var nom = labels[d.codeJour] || "—";
-      setText("tempoAuj", nom);
-      var p = document.getElementById("pastilleAuj");
-      if (p) p.style.background = couleurs[d.codeJour] || "#94a3b8";
-      // Ajuster les tarifs si rouge
-      if (d.codeJour === 3) { TarifHC = 0.1568; TarifHP = 0.7562; }
-      else { TarifHC = 0.132; TarifHP = 0.1752; }
-    })
-    .catch(function (e) { console.warn("Tempo aujourd'hui KO (CORS ?) :", e); });
-
-  fetch("https://www.api-couleur-tempo.fr/api/jourTempo/tomorrow")
-    .then(function (r) { return r.json(); })
-    .then(function (d) {
-      var nom = labels[d.codeJour] || "—";
-      setText("tempoDem", nom);
-      var p = document.getElementById("pastilleDem");
-      if (p) p.style.background = couleurs[d.codeJour] || "#94a3b8";
-    })
-    .catch(function (e) { console.warn("Tempo demain KO (CORS ?) :", e); });
-
-  fetch("https://www.api-couleur-tempo.fr/api/stats")
-    .then(function (r) { return r.json(); })
-    .then(function (d) { setText("rougeRestant", d.joursRougesRestants || "?"); })
-    .catch(function (e) { console.warn("Tempo stats KO (CORS ?) :", e); });
+  var labels = { 1: "Bleu", 2: "Blanc", 3: "Rouge" }, couleurs = { 1: "blue", 2: "white", 3: "red" };
+  fetch("https://www.api-couleur-tempo.fr/api/jourTempo/today").then(function (r) { return r.json(); }).then(function (d) {
+    setText("tempoAuj", labels[d.codeJour] || "—");
+    var p = $("pastilleAuj"); if (p) p.style.background = couleurs[d.codeJour] || "#94a3b8";
+    if (d.codeJour === 3) { TarifHC = 0.1568; TarifHP = 0.7562; } else { TarifHC = 0.132; TarifHP = 0.1752; }
+  }).catch(function (e) { console.warn("Tempo aujourd'hui KO :", e); });
+  fetch("https://www.api-couleur-tempo.fr/api/jourTempo/tomorrow").then(function (r) { return r.json(); }).then(function (d) {
+    setText("tempoDem", labels[d.codeJour] || "—");
+    var p = $("pastilleDem"); if (p) p.style.background = couleurs[d.codeJour] || "#94a3b8";
+  }).catch(function (e) { console.warn("Tempo demain KO :", e); });
+  fetch("https://www.api-couleur-tempo.fr/api/stats").then(function (r) { return r.json(); }).then(function (d) {
+    setText("rougeRestant", String(d.joursRougesRestants || "?"));
+  }).catch(function (e) { console.warn("Tempo stats KO :", e); });
 }
-chargerTempo();
 
-// ============ Horloge ============
+// ---------------- Horloge
 function startTime() {
-  var today = new Date();
-  var d = today.getDate();
-  var s = today.getSeconds();
-  var h = today.getHours();
-  heure = h;
-  var m = checkTime(today.getMinutes());
-  s = checkTime(s);
-  var mois = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
-  document.getElementById('time').innerHTML = "Gestion solaire Nata (GitHub) le " + d + " " + mois[today.getMonth()] + " à " + h + ":" + m + ":" + s;
+  var d = new Date(), m = ("0" + d.getMinutes()).slice(-2), s = ("0" + d.getSeconds()).slice(-2);
+  heure = d.getHours();
+  var mois = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+  var txt = d.getDate() + " " + mois[d.getMonth()] + " " + heure + ":" + m + ":" + s;
+  if (S.t) { var a = Math.max(0, Math.round((Date.now() - S.t) / 1000)); txt += " · mesure il y a " + (a < 90 ? a + " s" : Math.round(a / 60) + " min"); }
+  setText("time", txt);
   setTimeout(startTime, 1000);
 }
-function checkTime(i) { if (i < 10) i = "0" + i; return i; }
-startTime();
+
+// ---------------- Démarrage
+document.addEventListener("visibilitychange", function () { if (!document.hidden) { rafraichir(); } });
+startTime(); chargerTempo();
+chargerConso().then(function () { rafraichir(); });
+setInterval(rafraichir, 20000);
+setInterval(chargerTemp, 600000);
+go(location.hash.slice(1));
 </script>
 </body>
 </html>
