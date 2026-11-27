@@ -48,14 +48,14 @@ h2{margin:4px 4px 0;font-size:.75rem;letter-spacing:.08em;text-transform:upperca
 .chip b{display:block;font-size:1.05rem;color:var(--k)}
 .chip small{display:block;font-size:.68rem;color:var(--mu);min-height:1em}
 .chip.on{--k:var(--ok);border-color:var(--ok);background:color-mix(in srgb,var(--ok) 10%,var(--c))}
-.thermos{display:flex;justify-content:space-around;gap:6px}
-.thermo{display:flex;flex-direction:column;align-items:center;width:31%;max-width:120px;--p:0;--col:#2563eb;--mn:0;--mx:0}
-.thermo>b{font-size:.82rem}
-.thermo .val{font-size:1.4rem;font-weight:700;color:var(--col);margin:2px 0 6px;transition:color .8s}
-.tube{position:relative;width:26px;height:120px;border:3px solid #cbd5e1;border-bottom:0;border-radius:13px 13px 0 0;background:repeating-linear-gradient(to top,#e2e8f0 0 1px,#f8fafc 1px 12px)}
+.thermos{display:flex;justify-content:space-around;gap:2px}
+.thermo{display:flex;flex-direction:column;align-items:center;width:19%;max-width:84px;--p:0;--col:#2563eb;--mn:0;--mx:0}
+.thermo>b{font-size:.68rem;text-align:center;line-height:1.2;white-space:nowrap}
+.thermo .val{font-size:1.05rem;font-weight:700;color:var(--col);margin:2px 0 6px;transition:color .8s}
+.tube{position:relative;width:22px;height:120px;border:3px solid #cbd5e1;border-bottom:0;border-radius:13px 13px 0 0;background:repeating-linear-gradient(to top,#e2e8f0 0 1px,#f8fafc 1px 12px)}
 .merc{position:absolute;left:4px;right:4px;bottom:0;height:calc(var(--p)*1%);background:var(--col);border-radius:8px 8px 0 0;transition:height .8s,background .8s}
-.bulbe{width:46px;height:46px;border-radius:50%;background:var(--col);border:3px solid #cbd5e1;margin-top:-6px;position:relative;z-index:1;transition:background .8s}
-.thermo small{color:var(--mu);margin-top:5px;text-align:center;font-size:.74rem;line-height:1.5}
+.bulbe{width:38px;height:38px;border-radius:50%;background:var(--col);border:3px solid #cbd5e1;margin-top:-6px;position:relative;z-index:1;transition:background .8s}
+.thermo small{color:var(--mu);margin-top:5px;text-align:center;font-size:.64rem;line-height:1.35}
 .rep{position:absolute;left:-9px;right:-9px;height:0;border-top:3px solid;z-index:2;transition:bottom .8s}
 .rep.mx{bottom:calc(var(--mx)*1%);border-color:var(--cmx,#dc2626)}
 .rep.mn{bottom:calc(var(--mn)*1%);border-color:var(--cmn,#2563eb)}
@@ -109,6 +109,22 @@ button:active{transform:scale(.97)}
 .actions .full{grid-column:1/-1}
 .liens{display:flex;flex-wrap:wrap;gap:6px 18px;justify-content:center;font-size:.88rem}
 a{color:var(--ac)}
+.chip small.mau{color:var(--tau);font-weight:700}
+.chip small.mma{color:var(--tma);font-weight:700}
+.chip small.mar{color:var(--tar);font-weight:700}
+.chip small.mhc{color:var(--thc);font-weight:700}
+.sheet{position:fixed;inset:0;z-index:50;background:rgba(15,23,42,.45);display:flex;align-items:flex-end;justify-content:center}
+.sheet>div{background:var(--c);width:100%;max-width:720px;border-radius:20px 20px 0 0;padding:16px 14px calc(16px + env(safe-area-inset-bottom,0px));box-shadow:0 -8px 30px rgba(0,0,0,.3)}
+.sh-h{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:1.05rem;margin-bottom:12px}
+.sh-h button{min-height:38px;padding:2px 14px}
+.mbs{display:flex;gap:8px}
+.mb{flex:1 1 0;min-width:0;min-height:56px;padding:6px 4px;font-size:.95rem;font-weight:800;border:2px solid var(--bd);border-radius:14px;background:var(--c)}
+.mb.au{color:var(--tau)}.mb.ma{color:var(--tma)}.mb.ar{color:var(--tar)}.mb.hc{color:var(--thc)}
+.mb.sel{color:#fff;box-shadow:0 2px 6px rgba(0,0,0,.28)}
+.mb.sel.au{background:var(--bau);border-color:var(--bau)}
+.mb.sel.ma{background:var(--bma);border-color:var(--bma)}
+.mb.sel.ar{background:var(--bar);border-color:var(--bar)}
+.mb.sel.hc{background:var(--bhc);border-color:var(--bhc)}
 /* Historique */
 .graph{width:100%;height:300px}
 .ts{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
@@ -130,6 +146,8 @@ iframe.ts1{width:100%;max-width:450px;height:250px;border:1px solid var(--bd);bo
 .nav button.on{color:var(--ac);background:color-mix(in srgb,var(--ac) 12%,transparent)}
 @media(min-width:900px){body{padding-bottom:0}.nav{position:static;max-width:720px;margin:10px auto 0;border:1px solid var(--bd);border-radius:14px}}
 @media (prefers-reduced-motion:reduce){*{transition-duration:.01ms !important}}
+
+.chips.c4{grid-template-columns:1fr 1fr}
 </style>
 </head>
 <body>
@@ -161,18 +179,21 @@ iframe.ts1{width:100%;max-width:450px;height:250px;border:1px solid var(--bd);bo
     <div class="sub"><span>🚿 Chauffe-eau : <b id="wBal">--</b></span><span>♨️ Chauffage : <b id="wCh">--</b></span><span>⏱️ <b id="PrixparheureVal">--</b></span></div>
   </div>
 
-  <h2>🔌 Équipements <span style="text-transform:none;letter-spacing:0">(déduits des puissances)</span></h2>
-  <div class="chips">
+  <h2>🔌 Équipements</h2>
+  <div class="chips c4">
     <div class="chip" id="c_sdb"><span class="l">🚿 Cumulus SdB</span><b id="s_sdb">--</b></div>
     <div class="chip" id="c_cuis"><span class="l">🍳 Cumulus cuis.</span><b id="s_cuis">--</b></div>
+    <div class="chip" id="c_pompe"><span class="l">🌊 Pompe piscine</span><b id="s_pompe">--</b></div>
     <div class="chip" id="c_salon"><span class="l">🛋️ Chauf. salon</span><b id="s_salon">--</b></div>
   </div>
 
-  <h2>🌡️ Températures (min / max 24 h)</h2>
+  <h2>🌡️ Températures (min / max 24 h) et niveaux</h2>
   <div class="carte thermos">
-    <div class="thermo" id="thermoExt"><b>🌤️ Extérieur</b><span class="val" id="valExt">--</span><div class="tube"><div class="merc"></div><i class="rep mx"></i><i class="rep mn"></i></div><div class="bulbe"></div><small id="mmExt">&nbsp;</small></div>
-    <div class="thermo" id="thermoPiscine"><b>🏊 Piscine</b><span class="val" id="valPiscine">--</span><div class="tube"><div class="merc"></div><i class="rep mx"></i><i class="rep mn"></i></div><div class="bulbe"></div><small id="mmPiscine">&nbsp;</small></div>
-    <div class="thermo" id="thermoBallon"><b>🚿 Cumulus</b><span class="val" id="valBallon">--</span><div class="tube"><div class="merc"></div><i class="rep mx"></i><i class="rep mn"></i></div><div class="bulbe"></div><small id="mmBallon">&nbsp;</small></div>
+    <div class="thermo" id="thermoExt"><b>🌤️<br>Extérieur</b><span class="val" id="valExt">--</span><div class="tube"><div class="merc"></div><i class="rep mx"></i><i class="rep mn"></i></div><div class="bulbe"></div><small id="mmExt">&nbsp;</small></div>
+    <div class="thermo" id="thermoPiscine"><b>🏊<br>Piscine</b><span class="val" id="valPiscine">--</span><div class="tube"><div class="merc"></div><i class="rep mx"></i><i class="rep mn"></i></div><div class="bulbe"></div><small id="mmPiscine">&nbsp;</small></div>
+    <div class="thermo" id="thermoBallon"><b>🚿<br>Cumulus</b><span class="val" id="valBallon">--</span><div class="tube"><div class="merc"></div><i class="rep mx"></i><i class="rep mn"></i></div><div class="bulbe"></div><small id="mmBallon">&nbsp;</small></div>
+    <div class="thermo" id="thermoBat"><b>🔋<br>Batterie</b><span class="val" id="valBat">--</span><div class="tube"><div class="merc"></div><i class="rep mx"></i><i class="rep mn"></i></div><div class="bulbe"></div><small id="mmBat">&nbsp;</small></div>
+    <div class="thermo" id="thermoCuve"><b>💧<br>Cuve</b><span class="val" id="valCuve">--</span><div class="tube"><div class="merc"></div></div><div class="bulbe"></div><small id="mmCuve">&nbsp;</small></div>
   </div>
 
   <h2>💰 Aujourd'hui</h2>
@@ -260,7 +281,7 @@ function go(n) {
 }
 
 // ---------------- État partagé
-var S = { sol: 0, tot: 0, res: 0, bal: 0, ch: 0, ext: NaN, pisc: NaN, ball: NaN, t: 0, age: 0 };
+var S = { sol: 0, tot: 0, res: 0, bal: 0, ch: 0, ext: NaN, pisc: NaN, ball: NaN, batPct: NaN, cuve: NaN, t: 0, age: 0 };
 
 // ---------------- Mini-courbes
 var hist = { Sol: [], Tot: [], Res: [], Bal: [] };
@@ -295,6 +316,65 @@ function majThermo(id, v) {
   if (m) { if (v < m.mn) m.mn = v; if (v > m.mx) m.mx = v; majRepere(id); }
 }
 
+// ---------------- Décodage des champs « compressés » (chaînes, sans erreur d'arrondi)
+//  champ 6 : puissance maison (W) + % cuve sur 3 décimales      (ex. 1234.075 -> 1234 W, cuve 75 %)
+//  champ 7 : puissance cumulus (W) + % batterie sur 3 décimales (ex. 800.062  -> 800 W, batterie 62 %)
+//  champ 8 : kWh réseau . bits (1 chiffre) centièmes (2 chiffres)   ex. 12.534 -> 12,34 kWh, bits 5
+//            bits : 1 = cumulus SdB, 2 = cumulus cuisine, 4 = pompe piscine
+function entDe(s) { var n = parseInt(s, 10); return isNaN(n) ? 0 : n; }
+function kWhDe(s) {
+  s = String(s); var n = entDe(s), i = s.indexOf("."); if (i < 0) return n;
+  var c = parseInt((s.substring(i + 2) + "00").substring(0, 2), 10);
+  return n + (isNaN(c) ? 0 : c / 100);
+}
+function pctDe(s) {
+  s = String(s); var i = s.indexOf("."); if (i < 0) return NaN;
+  var p = parseInt((s.substring(i + 1) + "000").substring(0, 3), 10);
+  return (p >= 0 && p <= 100) ? p : NaN;
+}
+function bitsDe(s) {
+  s = String(s); var i = s.indexOf("."); if (i < 0) return -1;        // ancien format : pas de bits
+  var c = parseInt(s.charAt(i + 1), 10); return isNaN(c) ? 0 : c;
+}
+
+// ---------------- Niveaux batterie / cuve (jauges verticales) + min/max batterie
+function majNiveau(id, v, bas, moy, haut) {
+  if (isNaN(v) || v < 0) return;
+  var el = $("thermo" + id);
+  el.style.setProperty("--p", Math.max(0, Math.min(100, v)));
+  el.style.setProperty("--col", v < bas ? "#dc2626" : (v < moy ? "#f59e0b" : haut));
+  $("val" + id).textContent = Math.round(v) + "%";
+}
+var batMM = null;
+function colBat(v) { return v < 20 ? "#dc2626" : (v < 50 ? "#f59e0b" : "#16a34a"); }
+function majMMBat() {
+  if (!batMM) return;
+  var mn = batMM.mn, mx = batMM.mx;
+  if (!isNaN(S.batPct)) { if (S.batPct < mn) mn = S.batPct; if (S.batPct > mx) mx = S.batPct; }
+  var el = $("thermoBat");
+  el.style.setProperty("--mn", mn); el.style.setProperty("--mx", mx);
+  el.style.setProperty("--cmn", colBat(mn)); el.style.setProperty("--cmx", colBat(mx));
+  $("mmBat").innerHTML = '24 h<br><span style="color:' + colBat(mx) + '">▲ ' + Math.round(mx) + '%</span><br><span style="color:' + colBat(mn) + '">▼ ' + Math.round(mn) + '%</span>';
+}
+function chargerMMBat() {
+  var cle = "nataBatMMgh", now = Date.now();
+  try {
+    var c = JSON.parse(localStorage.getItem(cle) || "null");
+    if (c && now - c.t < 1800000) { batMM = { mn: c.mn, mx: c.mx }; majMMBat(); return; }
+  } catch (e) {}
+  fetch(tsUrl("/fields/7.json", "days=1&results=8000"), { cache: "no-store" })
+    .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+    .then(function (j) {
+      var mn = Infinity, mx = -Infinity;
+      (j.feeds || []).forEach(function (f) { var p = pctDe(f.field7); if (isNaN(p)) return; if (p < mn) mn = p; if (p > mx) mx = p; });
+      if (mn === Infinity) return;
+      batMM = { mn: mn, mx: mx };
+      try { localStorage.setItem(cle, JSON.stringify({ t: now, mn: mn, mx: mx })); } catch (e) {}
+      majMMBat();
+    })
+    .catch(function (e) { console.warn("Min/max batterie indisponible :", e); });
+}
+
 // ---------------- Récupération ThingSpeak
 function chargerFeeds(url) {
   return fetch(url, { cache: "no-store" })
@@ -324,8 +404,8 @@ var lignes = [], lastId = 0, tConso = 0;
 function ligneDe(f) {
   var d = new Date(f.created_at);
   if (isNaN(d.getTime()) || (f.field5 == null && f.field6 == null)) return null;
-  var sol = Math.round(parseFloat(f.field5) || 0), tot = Math.round(parseFloat(f.field6) || 0);
-  return { id: parseInt(f.entry_id) || 0, h: [d.getHours(), d.getMinutes(), d.getSeconds()], sol: sol, tot: tot, res: tot - sol, bal: Math.round(parseFloat(f.field7) || 0) };
+  var sol = Math.round(parseFloat(f.field5) || 0), tot = entDe(f.field6);
+  return { id: parseInt(f.entry_id) || 0, h: [d.getHours(), d.getMinutes(), d.getSeconds()], sol: sol, tot: tot, res: tot - sol, bal: entDe(f.field7) };
 }
 function majRec() {
   var a = 0, b = 0, c = 0;
@@ -345,7 +425,7 @@ function chargerConso() {
   }).catch(function (e) { console.warn("Historique KO :", e); setText("histoErr", "Consommation : " + e.message); });
 }
 
-function etat(id, on) { setText("s_" + id, on ? "En chauffe" : "Arrêt"); setCls("c_" + id, "chip" + (on ? " on" : "")); }
+function etat(id, on) { setText("s_" + id, on === null ? "--" : (on ? "ON" : "OFF")); setCls("c_" + id, "chip" + (on ? " on" : "")); }
 
 function rafraichir() {
   if (document.hidden) return;
@@ -354,8 +434,9 @@ function rafraichir() {
     .then(function (d) {
       echecs = 0;
       var tE = parseFloat(d.field1), tP = parseFloat(d.field2), tB = parseFloat(d.field3);
-      var pCh = parseFloat(d.field4) || 0, pSol = parseFloat(d.field5) || 0, pTot = parseFloat(d.field6) || 0;
-      var pBal = parseFloat(d.field7) || 0, kWhRes = parseFloat(d.field8) || 0, pRes = pTot - pSol;
+      var pCh = parseFloat(d.field4) || 0, pSol = parseFloat(d.field5) || 0;
+      var pTot = entDe(d.field6), pBal = entDe(d.field7), kWhRes = kWhDe(d.field8);
+      var pRes = pTot - pSol, cuve = pctDe(d.field6), batt = pctDe(d.field7), bits = bitsDe(d.field8);
       S.sol = pSol; S.tot = pTot; S.res = pRes; S.bal = pBal; S.ch = pCh;
       S.t = Date.parse(d.created_at); S.age = isNaN(S.t) ? 0 : (Date.now() - S.t) / 60000;
 
@@ -366,12 +447,16 @@ function rafraichir() {
       setText("hResSub", pRes > 0 ? "soutirage depuis le réseau" : "injection / aucun soutirage");
       setCls("tRes", "t " + (pRes > 0 ? "bad" : "good"));
       // États déduits des puissances (même logique que l'ancienne page GitHub)
-      var cumulusOn = (pBal > 100 && pBal < 800) || pBal > 1100;
-      var cuisineOn = (pBal > 2050) || (pBal > 800 && pBal < 1100);
+      var cod = bits >= 0;   // bits reçus (nouveau format) sinon déduction depuis la puissance
+      var cumulusOn = cod ? !!(bits & 1) : ((pBal > 100 && pBal < 900) || pBal > 1000);
+      var cuisineOn = cod ? !!(bits & 2) : ((pBal > 2050) || (pBal > 900 && pBal < 980));
+      var pompeOn = cod ? !!(bits & 4) : null;
       var chaufOn = pCh > 50;
+      if (!isNaN(batt)) { S.batPct = batt; majNiveau("Bat", batt, 20, 50, "#16a34a"); majMMBat(); }
+      if (!isNaN(cuve)) { S.cuve = cuve; majNiveau("Cuve", cuve, 15, 40, "#0ea5e9"); }
       setText("hBalSub", (cumulusOn || cuisineOn) ? "en chauffe" : "arrêt");
       setCls("tBal", "t " + ((cumulusOn || cuisineOn) ? "good" : ""));
-      etat("sdb", cumulusOn); etat("cuis", cuisineOn); etat("salon", chaufOn);
+      etat("sdb", cumulusOn); etat("cuis", cuisineOn); etat("pompe", pompeOn); etat("salon", chaufOn);
 
       setText("wBal", Math.round(pBal) + " W"); setText("wCh", Math.round(pCh) + " W");
       var cv = pTot > 0 ? Math.min(100, Math.round(pSol * 100 / pTot)) : 0;
@@ -482,6 +567,8 @@ var REGLES = [
   { id: "res", ico: "⚡", nom: "Soutirage réseau supérieur à", u: "W", v: 3000, on: false, t: function (v) { return S.res > v; }, m: function () { return "Réseau : " + Math.round(S.res) + " W"; } },
   { id: "pisc", ico: "🏊", nom: "Piscine supérieure à", u: "°C", v: 30, on: false, t: function (v) { return S.pisc > v; }, m: function () { return "Piscine à " + S.pisc.toFixed(1) + "°"; } },
   { id: "ball", ico: "🚿", nom: "Cumulus inférieur à", u: "°C", v: 40, on: false, t: function (v) { return S.ball < v; }, m: function () { return "Cumulus à " + S.ball.toFixed(1) + "°"; } },
+  { id: "bat", ico: "🔋", nom: "Batterie inférieure à", u: "%", v: 20, on: true, t: function (v) { return S.batPct < v; }, m: function () { return "Batterie à " + S.batPct + " %"; } },
+  { id: "cuve", ico: "💧", nom: "Cuve inférieure à", u: "%", v: 15, on: true, t: function (v) { return S.cuve < v; }, m: function () { return "Cuve à " + S.cuve + " %"; } },
   { id: "gel", ico: "🥶", nom: "Gel : extérieur inférieur à", u: "°C", v: 2, on: true, t: function (v) { return S.ext < v; }, m: function () { return "Extérieur à " + S.ext.toFixed(1) + "°"; } }
 ];
 var CFG = {}, prev = {}, dernNotif = {};
@@ -570,6 +657,7 @@ startTime(); chargerTempo();
 chargerConso().then(function () { rafraichir(); });
 setInterval(rafraichir, 20000);
 setInterval(chargerTemp, 600000);
+chargerMMBat(); setInterval(chargerMMBat, 1800000);
 go(location.hash.slice(1));
 </script>
 </body>
