@@ -176,7 +176,7 @@ iframe.ts1{width:100%;max-width:450px;height:250px;border:1px solid var(--bd);bo
   <div class="carte couv">
     <div><span>☀️ Couverture solaire de la maison</span><b id="cvPct">--</b></div>
     <div class="bar cu"><i id="cvBar"></i></div>
-    <div class="sub"><span>🚿 Chauffe-eau : <b id="wBal">--</b></span><span>♨️ Chauffage : <b id="wCh">--</b></span><span>⏱️ <b id="PrixparheureVal">--</b></span></div>
+    <div class="sub"><span>🚿 Chauffe-eau : <b id="wBal">--</b></span><span><span id="lblCh">♨️ Chauffage : </span><b id="wCh">--</b></span><span>⏱️ <b id="PrixparheureVal">--</b></span></div>
   </div>
 
   <h2>🔌 Équipements</h2>
@@ -184,7 +184,7 @@ iframe.ts1{width:100%;max-width:450px;height:250px;border:1px solid var(--bd);bo
     <div class="chip" id="c_sdb"><span class="l">🚿 Cumulus SdB</span><b id="s_sdb">--</b></div>
     <div class="chip" id="c_cuis"><span class="l">🍳 Cumulus cuis.</span><b id="s_cuis">--</b></div>
     <div class="chip" id="c_pompe"><span class="l">🌊 Pompe piscine</span><b id="s_pompe">--</b></div>
-    <div class="chip" id="c_salon"><span class="l">🛋️ Chauf. salon</span><b id="s_salon">--</b></div>
+    <div class="chip" id="c_salon"><span class="l" id="lblSalon">🛋️ Chauf. salon</span><b id="s_salon">--</b></div>
   </div>
 
   <h2>🌡️ Températures (min / max 24 h) et niveaux</h2>
@@ -217,7 +217,7 @@ iframe.ts1{width:100%;max-width:450px;height:250px;border:1px solid var(--bd);bo
     <div class="br"><span class="bl">🏠 Maison</span><div class="bt"><i class="bb" id="bb1"></i><em class="bv" id="bv1"></em></div></div>
     <div class="br"><span class="bl">⚡ Réseau</span><div class="bt"><i class="bb" id="bb2"></i><em class="bv" id="bv2"></em></div></div>
     <div class="br"><span class="bl">🚿 Cumulus</span><div class="bt"><i class="bb" id="bb3"></i><em class="bv" id="bv3"></em></div></div>
-    <div class="br"><span class="bl">♨️ Chauffage</span><div class="bt"><i class="bb" id="bb4"></i><em class="bv" id="bv4"></em></div></div>
+    <div class="br"><span class="bl" id="lblBarCh">♨️ Chauffage</span><div class="bt"><i class="bb" id="bb4"></i><em class="bv" id="bv4"></em></div></div>
     <div class="br"><span></span><div class="bt ax" id="bax"></div></div>
   </div>
   <div class="carte rec">
@@ -230,7 +230,7 @@ iframe.ts1{width:100%;max-width:450px;height:250px;border:1px solid var(--bd);bo
   <div class="carte"><div id="curve_chart_Temp" class="graph"></div></div>
   <h2>ThingSpeak</h2>
   <div class="ts">
-    <iframe class="ts1" data-src="https://thingspeak.com/channels/1922173/charts/3?bgcolor=%23ffffff&color=%23d62020&days=1&dynamic=true&title=Cumulus&type=step"></iframe>
+    <iframe class="ts1" data-src="https://thingspeak.com/channels/1922173/charts/3?bgcolor=%23ffffff&color=%23d62020&days=1&dynamic=true&title=Chauffage&type=step"></iframe>
     <iframe class="ts1" data-src="https://thingspeak.com/channels/1922173/charts/5?color=%23eeff00&days=2&dynamic=true&title=Photovolta%C3%AFque&type=spline&yaxismin=0"></iframe>
     <iframe class="ts1" data-src="https://thingspeak.com/channels/1922173/charts/8?bgcolor=%23ffffff&color=%23d62020&days=4&max=500&title=Conso+kWh"></iframe>
   </div>
@@ -296,6 +296,7 @@ function spark(k, v) { var a = hist[k]; a.push(v); if (a.length > 90) a.shift();
 // ---------------- Thermomètres
 var echelles = { Ext: [-10, 40], Piscine: [0, 40], Ballon: [20, 70] };
 var seuils = { Ext: [10, 25], Piscine: [24, 28], Ballon: [40, 55] };
+var PLAUSIBLE = { Ext: [-30, 50], Piscine: [-5, 45], Ballon: [15, 80] };   // hors plage = capteur absent / erreur : ignoré
 var mm = { Ext: null, Piscine: null, Ballon: null };
 function couleurTemp(id, v) { var s = seuils[id]; return v < s[0] ? "#2563eb" : (v < s[1] ? "#f59e0b" : "#dc2626"); }
 function posTemp(id, v) { var e = echelles[id]; return Math.max(0, Math.min(100, (v - e[0]) / (e[1] - e[0]) * 100)); }
@@ -307,7 +308,7 @@ function majRepere(id) {
   $("mm" + id).innerHTML = '24 h<br><span style="color:' + couleurTemp(id, m.mx) + '">▲ ' + m.mx.toFixed(1) + '°</span> <span style="color:' + couleurTemp(id, m.mn) + '">▼ ' + m.mn.toFixed(1) + '°</span>';
 }
 function majThermo(id, v) {
-  if (isNaN(v)) return;
+  if (isNaN(v) || v <= PLAUSIBLE[id][0] || v >= PLAUSIBLE[id][1]) return;
   var el = $("thermo" + id);
   el.style.setProperty("--p", posTemp(id, v)); el.style.setProperty("--col", couleurTemp(id, v));
   $("val" + id).textContent = v.toFixed(1) + "°";
@@ -356,24 +357,52 @@ function majMMBat() {
   el.style.setProperty("--cmn", colBat(mn)); el.style.setProperty("--cmx", colBat(mx));
   $("mmBat").innerHTML = '24 h<br><span style="color:' + colBat(mx) + '">▲ ' + Math.round(mx) + '%</span><br><span style="color:' + colBat(mn) + '">▼ ' + Math.round(mn) + '%</span>';
 }
-function chargerMMBat() {
-  var cle = "nataBatMMgh", now = Date.now();
+// Min / max sur 24 h : mesures brutes ThingSpeak (une requête pour températures + batterie, gardée 30 min)
+function appliquerMM(r) {
+  ["Ext", "Piscine", "Ballon"].forEach(function (id) { if (r[id]) { mm[id] = { mn: r[id].mn, mx: r[id].mx }; majRepere(id); } });
+  if (r.Bat) { batMM = { mn: r.Bat.mn, mx: r.Bat.mx }; majMMBat(); }
+}
+function chargerMM24h() {
+  var cle = "nataMM24h", now = Date.now();
   try {
     var c = JSON.parse(localStorage.getItem(cle) || "null");
-    if (c && now - c.t < 1800000) { batMM = { mn: c.mn, mx: c.mx }; majMMBat(); return; }
+    if (c && now - c.t < 1800000) { appliquerMM(c.r); return; }
   } catch (e) {}
-  fetch(tsUrl("/fields/7.json", "days=1&results=8000"), { cache: "no-store" })
+  fetch(tsUrl("/feeds.json", "days=1&results=8000"), { cache: "no-store" })
     .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
     .then(function (j) {
-      var mn = Infinity, mx = -Infinity;
-      (j.feeds || []).forEach(function (f) { var p = pctDe(f.field7); if (isNaN(p)) return; if (p < mn) mn = p; if (p > mx) mx = p; });
-      if (mn === Infinity) return;
-      batMM = { mn: mn, mx: mx };
-      try { localStorage.setItem(cle, JSON.stringify({ t: now, mn: mn, mx: mx })); } catch (e) {}
-      majMMBat();
+      var r = {}, champs = [["Ext", "field1"], ["Piscine", "field2"], ["Ballon", "field3"]];
+      function maj(id, v) { var a = r[id]; if (!a) r[id] = { mn: v, mx: v }; else { if (v < a.mn) a.mn = v; if (v > a.mx) a.mx = v; } }
+      (j.feeds || []).forEach(function (f) {
+        champs.forEach(function (p) {
+          var v = parseFloat(f[p[1]]), pl = PLAUSIBLE[p[0]];
+          if (!isNaN(v) && v > pl[0] && v < pl[1]) maj(p[0], v);
+        });
+        var b = pctDe(f.field7); if (!isNaN(b)) maj("Bat", b);
+      });
+      appliquerMM(r);
+      try { localStorage.setItem(cle, JSON.stringify({ t: now, r: r })); } catch (e) {}
     })
-    .catch(function (e) { console.warn("Min/max batterie indisponible :", e); });
+    .catch(function (e) { console.warn("Min/max 24 h indisponibles :", e); });
 }
+
+// ---------------- Saison : la pompe à chaleur du salon fait de la clim en été
+var ETE_DEBUT = 6, ETE_FIN = 9;   // mois (inclus) pendant lesquels on affiche « Clim » au lieu de « Chauffage »
+function saisonEte() { var m = new Date().getMonth() + 1; return m >= ETE_DEBUT && m <= ETE_FIN; }
+function majSaison() {
+  var ete = saisonEte();
+  setText("lblSalon", ete ? "❄️ Clim salon" : "🛋️ Chauf. salon");
+  setText("lblCh", ete ? "❄️ Clim : " : "♨️ Chauffage : ");
+  setText("lblBarCh", ete ? "❄️ Clim" : "♨️ Chauffage");
+}
+// Tuile salon : pompe à chaleur NON pilotée par l'ESP -> cadre vert quand elle consomme (> 50 W)
+function chaufSalon(w) {
+  var on = w > 50;
+  setText("s_salon", on ? Math.round(w) + " W" : "OFF");
+  setCls("c_salon", "chip" + (on ? " on" : ""));
+  setText("m_salon", on ? (saisonEte() ? "climatise" : "chauffe") : "arrêt");
+}
+majSaison(); setInterval(majSaison, 3600000);
 
 // ---------------- Récupération ThingSpeak
 function chargerFeeds(url) {
@@ -385,15 +414,9 @@ var tempFeeds = [], tTemp = 0;
 function chargerTemp() {
   return chargerFeeds(TS_TEMP).then(function (feeds) {
     tempFeeds = feeds; tTemp = Date.now();
-    var lim = Date.now() - 86400000;
     [["Ext", "field1"], ["Piscine", "field2"], ["Ballon", "field3"]].forEach(function (p) {
-      var mn = Infinity, mx = -Infinity, dern = NaN;
-      feeds.forEach(function (f) {
-        var v = parseFloat(f[p[1]]); if (isNaN(v)) return;
-        dern = v;
-        if (Date.parse(f.created_at) >= lim) { if (v < mn) mn = v; if (v > mx) mx = v; }
-      });
-      if (mn !== Infinity) { mm[p[0]] = { mn: mn, mx: mx }; majRepere(p[0]); }
+      var dern = NaN;
+      feeds.forEach(function (f) { var v = parseFloat(f[p[1]]); if (!isNaN(v)) dern = v; });
       var actuel = p[0] == "Ext" ? S.ext : (p[0] == "Piscine" ? S.pisc : S.ball);
       if (isNaN(actuel)) majThermo(p[0], dern);   // dernière moyenne horaire si pas de valeur instantanée
     });
@@ -451,12 +474,11 @@ function rafraichir() {
       var cumulusOn = cod ? !!(bits & 1) : ((pBal > 100 && pBal < 900) || pBal > 1000);
       var cuisineOn = cod ? !!(bits & 2) : ((pBal > 2050) || (pBal > 900 && pBal < 980));
       var pompeOn = cod ? !!(bits & 4) : null;
-      var chaufOn = pCh > 50;
       if (!isNaN(batt)) { S.batPct = batt; majNiveau("Bat", batt, 20, 50, "#16a34a"); majMMBat(); }
       if (!isNaN(cuve)) { S.cuve = cuve; majNiveau("Cuve", cuve, 15, 40, "#0ea5e9"); }
       setText("hBalSub", (cumulusOn || cuisineOn) ? "en chauffe" : "arrêt");
       setCls("tBal", "t " + ((cumulusOn || cuisineOn) ? "good" : ""));
-      etat("sdb", cumulusOn); etat("cuis", cuisineOn); etat("pompe", pompeOn); etat("salon", chaufOn);
+      etat("sdb", cumulusOn); etat("cuis", cuisineOn); etat("pompe", pompeOn); chaufSalon(pCh);
 
       setText("wBal", Math.round(pBal) + " W"); setText("wCh", Math.round(pCh) + " W");
       var cv = pTot > 0 ? Math.min(100, Math.round(pSol * 100 / pTot)) : 0;
@@ -657,7 +679,7 @@ startTime(); chargerTempo();
 chargerConso().then(function () { rafraichir(); });
 setInterval(rafraichir, 20000);
 setInterval(chargerTemp, 600000);
-chargerMMBat(); setInterval(chargerMMBat, 1800000);
+chargerMM24h(); setInterval(chargerMM24h, 1800000);
 go(location.hash.slice(1));
 </script>
 </body>
